@@ -1,0 +1,48 @@
+# ===== colcon / ament 构建产物 =====
+build/
+install/
+log/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+
+# ===== C/C++ 编译产物 =====
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# ===== Catkin/colcon 缓存 =====
+.catkin_workspace
+.colcon_*
+
+# ===== ROS 2 运行时 =====
+*.bag
+*.active
+*.orig
+*.rej
+
+# ===== 编辑器 / IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===== AI 辅助工具本地配置（按需保留则注释掉）=====
+.agents/
+.codex/
+
+# ===== 其它临时文件 =====
+*.tmp
+*.bak
+*.log
+core

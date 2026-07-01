@@ -1,0 +1,37 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: Map
+      Topic:
+        Value: /map
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Global Path
+      Topic:
+        Value: /plan
+  Enabled: true
+  Global Options:
+    Fixed Frame: map
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: nav2_rviz_plugins/GoalTool
+      Topic:
+        Value: /goal_pose
+  Value: true
