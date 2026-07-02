@@ -39,6 +39,7 @@
 - `launch/sim.launch.py`
 - `launch/slam.launch.py`
 - `launch/navigation.launch.py`
+- `launch/explore.launch.py`
 - `launch/lab.launch.py`
 - `params/nav2_params.yaml`
 - `maps/simple_room.yaml`、`maps/simple_room.pgm`（基线室内场景）
@@ -185,6 +186,41 @@
 
 - `/tmp/nav2_lab_results/*_telemetry.csv`
 
+### 3.5 `explore_runner.py`
+
+路径：
+
+- `nav2_lab_missions/nav2_lab_missions/explore_runner.py`
+
+这是自动探索建图节点，用来替掉 SLAM 建图阶段手动 `teleop_keyboard` 跑图的步骤，对 `real.world` 这类大世界尤其有用。
+
+它做的事情：
+
+1. 订阅 `/map`（来自 `slam_toolbox`）
+2. 用 numpy 检测前沿（free cell 紧邻 unknown cell）
+3. 用 TF 取机器人在 `map` 坐标系下的位姿
+4. 选离机器人最近的前沿作为目标，朝行进方向给出 yaw
+5. 通过 `NavigateToPose` action 发目标，等待结果
+6. 目标失败/超时则把该前沿加入黑名单，避免反复撞墙
+7. 循环直到没有前沿（地图探索完成）或总时长预算耗尽
+
+它复用了 `mission_runner.py` 的范式：同样是自驱动 Node（无顶层 spin），用 `ActionClient(self, NavigateToPose, ...)`，并用 `spin_until_future_complete` / `spin_once` 推进。
+
+这个节点不直接发 `/cmd_vel`，也不发 `/initialpose`（SLAM 模式下不需要）。它只负责发 `NavigateToPose` 目标，真正的运动控制仍由 Nav2 完成。
+
+主要参数（均有默认值，一般不需要改）：
+
+- `map_topic` / `action_name` / `map_frame` / `base_frame`
+- `goal_timeout_sec`（单目标超时，默认 90s）
+- `explore_timeout_sec`（总探索预算，默认 1800s）
+- `min_frontier_size`（少于该数量的前沿视为探索完成，默认 5）
+- `blacklist_radius_m`（失败前沿的屏蔽半径，默认 1.0m）
+- `min_goal_distance_m`（过近的目标忽略，默认 0.5m）
+
+输出文件位置：
+
+- `/tmp/nav2_lab_results/*_explore.csv`
+
 ## 4. 任务配置
 
 当前任务配置文件：
@@ -279,6 +315,8 @@ ros2 launch nav2_lab_bringup sim.launch.py world:=real
 
 ### 6.3 新世界标准流程
 
+> 这是**手动**建图流程（teleop 跑图）。如果不想手动遥控，尤其是 `real.world` 这种大世界，可以直接用 §6.6 的自动探索建图，让机器人自己跑满地图。
+
 以 `real.world` 为例，先启动仿真：
 
 ```bash
@@ -359,6 +397,45 @@ ros2 launch nav2_lab_bringup lab.launch.py run_mission:=false
 3. 用 `Nav2 Goal` 发送目标点
 
 如果 `run_mission:=false`，系统不会自动下发任务点。
+
+### 6.6 自动探索建图
+
+`explore.launch.py` 一条命令拉起「仿真 + SLAM + Nav2 + 探索节点」，机器人会自己朝地图前沿走，把地图跑满，省掉手动 teleop。适合 `real.world` 这种大世界。
+
+```bash
+ros2 launch nav2_lab_bringup explore.launch.py world:=real
+```
+
+它会做的事：
+
+1. 启动 Gazebo（`world:=real`）
+2. 以 SLAM 模式启动 Nav2（`slam_toolbox` 发布 `/map`，AMCL / map_server 不启动）
+3. 延迟约 12s 启动 `explore_runner`，开始前沿探索并持续建图
+
+RViz 会同步显示地图生长、代价地图和路径。探索过程会写入 `/tmp/nav2_lab_results/*_explore.csv`，记录每个目标的状态和耗时。
+
+常用参数（可选）：
+
+```bash
+ros2 launch nav2_lab_bringup explore.launch.py world:=real explore_timeout_sec:=3600 goal_timeout_sec:=120
+```
+
+约定：
+
+- `world:=real` 解析为 `nav2_lab_worlds/worlds/real.world`，与 §6.3 一致
+- `explore_timeout_sec`：总探索预算（默认 1800s）
+- `goal_timeout_sec`：单目标超时（默认 90s）
+
+探索完成（日志出现 `No more frontiers detected`）后，在另一个终端保存地图：
+
+```bash
+ros2 run nav2_map_server map_saver_cli -f nav2_lab_bringup/maps/real
+```
+
+注意：
+
+- 当前 SLAM 走的是 `slam_toolbox` 的 **sync** 变体（由 `navigation.launch.py` 的 `slam:=True` 提供）。对仿真 TurtleBot3 足够，建图质量受影响时再考虑切到 `online_async`。
+- 探索节点靠 TF 取 `map → base_link` 位姿，靠 `/map` 检测前沿；两者都来自 SLAM 栈，所以必须用 SLAM 模式启动。
 
 ## 7. 已经发现并修过的问题
 

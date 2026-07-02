@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'mission_runner = nav2_lab_missions.mission_runner:main',
             'mission_logger = nav2_lab_missions.mission_logger:main',
+            'explore_runner = nav2_lab_missions.explore_runner:main',
         ],
     },
 )
