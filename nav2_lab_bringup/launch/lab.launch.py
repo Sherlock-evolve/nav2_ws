@@ -2,49 +2,69 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-def generate_launch_description():
+def _resolve_config_file(value, package_share, directory, suffix):
+    expanded = os.path.expanduser(value)
+    if os.path.isabs(expanded):
+        return expanded
+
+    candidate = expanded
+    if suffix and not candidate.endswith(suffix):
+        candidate = f'{candidate}{suffix}'
+
+    installed_file = os.path.join(package_share, directory, candidate)
+    if os.path.exists(installed_file):
+        return installed_file
+
+    package_xml = os.path.join(package_share, 'package.xml')
+    if os.path.islink(package_xml):
+        source_package = os.path.dirname(os.path.realpath(package_xml))
+        source_file = os.path.join(source_package, directory, candidate)
+        if os.path.exists(source_file):
+            return source_file
+
+    return installed_file
+
+
+def launch_setup(context, *args, **kwargs):
     bringup_share = get_package_share_directory('nav2_lab_bringup')
     missions_share = get_package_share_directory('nav2_lab_missions')
 
     world = LaunchConfiguration('world')
+    model = LaunchConfiguration('model')
+    x_pose = LaunchConfiguration('x_pose')
+    y_pose = LaunchConfiguration('y_pose')
+    yaw = LaunchConfiguration('yaw')
     map_file = LaunchConfiguration('map')
     params_file = LaunchConfiguration('params_file')
-    mission_file = LaunchConfiguration('mission_file')
+    mission = LaunchConfiguration('mission').perform(context)
+    mission_file_override = LaunchConfiguration('mission_file').perform(context)
+    mission_file = _resolve_config_file(
+        mission_file_override or mission,
+        missions_share,
+        'config',
+        '.yaml',
+    )
+    slam = LaunchConfiguration('slam')
     run_mission = LaunchConfiguration('run_mission')
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_rviz = LaunchConfiguration('use_rviz')
 
-    return LaunchDescription([
-        DeclareLaunchArgument('world', default_value='simple_room', description='World name or absolute .world path.'),
-        DeclareLaunchArgument(
-            'map',
-            default_value=os.path.join(bringup_share, 'maps', 'simple_room.yaml'),
-            description='Full path to the map YAML file.',
-        ),
-        DeclareLaunchArgument(
-            'params_file',
-            default_value=os.path.join(bringup_share, 'params', 'nav2_params.yaml'),
-            description='Full path to the Nav2 parameter file.',
-        ),
-        DeclareLaunchArgument(
-            'mission_file',
-            default_value=os.path.join(missions_share, 'config', 'simple_room_mission.yaml'),
-            description='Mission YAML file.',
-        ),
-        DeclareLaunchArgument('run_mission', default_value='false', description='Run configured mission automatically.'),
-        DeclareLaunchArgument('use_sim_time', default_value='true', description='Use simulation time.'),
-        DeclareLaunchArgument('use_rviz', default_value='true', description='Start RViz.'),
+    return [
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(bringup_share, 'launch', 'sim.launch.py')),
             launch_arguments={
                 'world': world,
+                'model': model,
+                'x_pose': x_pose,
+                'y_pose': y_pose,
+                'yaw': yaw,
                 'use_sim_time': use_sim_time,
             }.items(),
         ),
@@ -53,6 +73,7 @@ def generate_launch_description():
             launch_arguments={
                 'map': map_file,
                 'params_file': params_file,
+                'slam': slam,
                 'use_sim_time': use_sim_time,
                 'use_rviz': use_rviz,
             }.items(),
@@ -84,4 +105,41 @@ def generate_launch_description():
                 ),
             ],
         ),
+    ]
+
+
+def generate_launch_description():
+    bringup_share = get_package_share_directory('nav2_lab_bringup')
+
+    return LaunchDescription([
+        DeclareLaunchArgument('world', default_value='simple_room', description='World name or absolute .world path.'),
+        DeclareLaunchArgument('model', default_value='waffle', description='TurtleBot3 model.'),
+        DeclareLaunchArgument('x_pose', default_value='-1.2', description='Initial robot x position.'),
+        DeclareLaunchArgument('y_pose', default_value='-1.2', description='Initial robot y position.'),
+        DeclareLaunchArgument('yaw', default_value='0.0', description='Initial robot yaw.'),
+        DeclareLaunchArgument(
+            'map',
+            default_value='simple_room',
+            description='Map name under nav2_lab_bringup/maps or absolute .yaml path.',
+        ),
+        DeclareLaunchArgument(
+            'params_file',
+            default_value=os.path.join(bringup_share, 'params', 'nav2_params.yaml'),
+            description='Full path to the Nav2 parameter file.',
+        ),
+        DeclareLaunchArgument(
+            'mission',
+            default_value='simple_room_mission',
+            description='Mission name under nav2_lab_missions/config, without .yaml.',
+        ),
+        DeclareLaunchArgument(
+            'mission_file',
+            default_value='',
+            description='Optional mission YAML name or path. Overrides mission when set.',
+        ),
+        DeclareLaunchArgument('slam', default_value='False', description='Run Nav2 with SLAM instead of AMCL.'),
+        DeclareLaunchArgument('run_mission', default_value='false', description='Run configured mission automatically.'),
+        DeclareLaunchArgument('use_sim_time', default_value='true', description='Use simulation time.'),
+        DeclareLaunchArgument('use_rviz', default_value='true', description='Start RViz.'),
+        OpaqueFunction(function=launch_setup),
     ])

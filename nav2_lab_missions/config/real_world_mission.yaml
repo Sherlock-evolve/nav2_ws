@@ -1,0 +1,30 @@
+frame_id: map
+default_timeout_sec: 240.0
+retry_count: 1
+publish_initial_pose: true
+wait_for_localization: true
+initial_pose:
+  x: -1.2
+  y: -1.2
+  yaw: 0.0
+goals:
+  - name: north_station
+    x: 0.0
+    y: 48.0
+    yaw: 1.57
+  - name: east_service_road
+    x: 96.0
+    y: 0.0
+    yaw: 0.0
+  - name: south_service_road
+    x: 0.0
+    y: -96.0
+    yaw: -1.57
+  - name: west_service_road
+    x: -96.0
+    y: 0.0
+    yaw: 3.14
+  - name: home
+    x: -1.2
+    y: -1.2
+    yaw: 0.0

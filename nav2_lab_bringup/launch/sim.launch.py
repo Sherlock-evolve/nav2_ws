@@ -33,6 +33,7 @@ def launch_setup(context, *args, **kwargs):
     turtlebot3_gazebo_share = get_package_share_directory('turtlebot3_gazebo')
     urdf_path = os.path.join(turtlebot3_gazebo_share, 'urdf', f'turtlebot3_{model}.urdf')
     sdf_path = os.path.join(turtlebot3_gazebo_share, 'models', f'turtlebot3_{model}', 'model.sdf')
+    local_gazebo_models = os.path.expanduser('~/gazebo_models')
 
     with open(urdf_path, 'r', encoding='utf-8') as urdf_file:
         robot_description = urdf_file.read()
@@ -41,6 +42,7 @@ def launch_setup(context, *args, **kwargs):
         'GAZEBO_MODEL_DATABASE_URI': '',
         'GAZEBO_MODEL_PATH': os.pathsep.join([
             os.path.join(turtlebot3_gazebo_share, 'models'),
+            local_gazebo_models,
             '/usr/share/gazebo-11/models',
         ]),
         'GAZEBO_PLUGIN_PATH': os.pathsep.join(['/opt/ros/humble/lib']),

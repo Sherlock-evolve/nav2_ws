@@ -80,8 +80,18 @@ class MissionRunner(Node):
         if not self._client.wait_for_server(timeout_sec=60.0):
             raise RuntimeError(f'Action server not available: {self._action_name}')
 
-        self._publish_initial_pose(mission)
-        self._wait_for_localization()
+        if mission.get('publish_initial_pose', True):
+            self._publish_initial_pose(mission)
+        else:
+            self.get_logger().info('Skipping initial pose publication for this mission')
+
+        if mission.get('wait_for_localization', True):
+            self._wait_for_localization()
+        elif self._nav_activation_delay_sec > 0.0:
+            self.get_logger().info(
+                f'Skipping localization wait; waiting {self._nav_activation_delay_sec:.1f}s for Nav2 activation'
+            )
+            time.sleep(self._nav_activation_delay_sec)
 
         goals = mission.get('goals', [])
         frame_id = mission.get('frame_id', 'map')
