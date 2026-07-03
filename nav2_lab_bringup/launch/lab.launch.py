@@ -2,8 +2,16 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    RegisterEventHandler,
+    Shutdown,
+    TimerAction,
+)
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -53,8 +61,32 @@ def launch_setup(context, *args, **kwargs):
     )
     slam = LaunchConfiguration('slam')
     run_mission = LaunchConfiguration('run_mission')
+    shutdown_on_mission_complete = LaunchConfiguration('shutdown_on_mission_complete')
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_rviz = LaunchConfiguration('use_rviz')
+
+    mission_runner_node = Node(
+        condition=IfCondition(run_mission),
+        package='nav2_lab_missions',
+        executable='mission_runner',
+        name='mission_runner',
+        output='screen',
+        parameters=[{
+            'mission_file': mission_file,
+            'use_sim_time': use_sim_time,
+            'nav_activation_delay_sec': 5.0,
+            'wait_for_amcl_timeout_sec': 30.0,
+            'retry_backoff_sec': 2.0,
+        }],
+    )
+    mission_logger_node = Node(
+        condition=IfCondition(run_mission),
+        package='nav2_lab_missions',
+        executable='mission_logger',
+        name='mission_logger',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
 
     return [
         IncludeLaunchDescription(
@@ -81,29 +113,18 @@ def launch_setup(context, *args, **kwargs):
         TimerAction(
             period=15.0,
             actions=[
-                Node(
-                    condition=IfCondition(run_mission),
-                    package='nav2_lab_missions',
-                    executable='mission_runner',
-                    name='mission_runner',
-                    output='screen',
-                    parameters=[{
-                        'mission_file': mission_file,
-                        'use_sim_time': use_sim_time,
-                        'nav_activation_delay_sec': 5.0,
-                        'wait_for_amcl_timeout_sec': 30.0,
-                        'retry_backoff_sec': 2.0,
-                    }],
-                ),
-                Node(
-                    condition=IfCondition(run_mission),
-                    package='nav2_lab_missions',
-                    executable='mission_logger',
-                    name='mission_logger',
-                    output='screen',
-                    parameters=[{'use_sim_time': use_sim_time}],
-                ),
+                mission_runner_node,
+                mission_logger_node,
             ],
+        ),
+        RegisterEventHandler(
+            condition=IfCondition(shutdown_on_mission_complete),
+            event_handler=OnProcessExit(
+                target_action=mission_runner_node,
+                on_exit=[
+                    Shutdown(reason='mission_runner completed'),
+                ],
+            ),
         ),
     ]
 
@@ -139,6 +160,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('slam', default_value='False', description='Run Nav2 with SLAM instead of AMCL.'),
         DeclareLaunchArgument('run_mission', default_value='false', description='Run configured mission automatically.'),
+        DeclareLaunchArgument(
+            'shutdown_on_mission_complete',
+            default_value='false',
+            description='Shutdown the whole launch when mission_runner exits.',
+        ),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='Use simulation time.'),
         DeclareLaunchArgument('use_rviz', default_value='true', description='Start RViz.'),
         OpaqueFunction(function=launch_setup),

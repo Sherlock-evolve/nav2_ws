@@ -106,6 +106,7 @@
 - `mission_file`：可选，任务名或路径，设置时覆盖 `mission`
 - `slam`：是否以 SLAM 模式启动 Nav2（默认 `False`，走 AMCL）
 - `run_mission`
+- `shutdown_on_mission_complete`：`mission_runner` 退出后是否自动关闭整个 launch，适合批量基线验证
 - `use_sim_time`
 - `use_rviz`
 
@@ -475,11 +476,17 @@ ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --require-success
 ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --baseline simple_room
 ```
 
+更推荐直接用脚本完整执行 `simple_room` 基线。它会自动归档旧结果、连续运行 mission，并在最后检查内置基线：
+
+```bash
+./run_simple_room_baseline.sh 5
+```
+
 推荐的基线固化方式：
 
 1. 清空或单独保存旧的 `/tmp/nav2_lab_results/*_mission.csv`
-2. 连续跑 5 到 10 次 `simple_room_mission`
-3. 用 `mission_stats --baseline simple_room` 检查成功率、重试次数和目标耗时
+2. 用 `./run_simple_room_baseline.sh 5` 连续跑 `simple_room_mission`
+3. 确认脚本最后输出 `Baseline check (simple_room): PASS`
 4. 后续修改 launch、参数或算法前后，都先比较这套结果
 
 ## 7. 已经发现并修过的问题
