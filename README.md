@@ -455,6 +455,33 @@ ros2 run nav2_map_server map_saver_cli -f nav2_lab_bringup/maps/real
 - 当前 SLAM 走的是 `slam_toolbox` 的 **sync** 变体（由 `navigation.launch.py` 的 `slam:=True` 提供）。对仿真 TurtleBot3 足够，建图质量受影响时再考虑切到 `online_async`。
 - 探索节点靠 TF 取 `map → base_link` 位姿，靠 `/map` 检测前沿；两者都来自 SLAM 栈，所以必须用 SLAM 模式启动。
 
+### 6.7 基线结果统计
+
+`mission_runner` 每次运行会在 `/tmp/nav2_lab_results` 下生成 `*_mission.csv`。可以用内置统计命令汇总一次或多次运行结果：
+
+```bash
+ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results
+```
+
+如果要把 `simple_room` 当作回归门槛，可以加上 `--require-success`。只要有任意一次 mission 的最终目标状态不是 `succeeded`，命令就会返回非 0：
+
+```bash
+ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --require-success
+```
+
+项目内置了 `simple_room` 基线阈值。连续跑完多次 `simple_room_mission` 后，用下面的命令可以直接判定是否符合当前基线：
+
+```bash
+ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --baseline simple_room
+```
+
+推荐的基线固化方式：
+
+1. 清空或单独保存旧的 `/tmp/nav2_lab_results/*_mission.csv`
+2. 连续跑 5 到 10 次 `simple_room_mission`
+3. 用 `mission_stats --baseline simple_room` 检查成功率、重试次数和目标耗时
+4. 后续修改 launch、参数或算法前后，都先比较这套结果
+
 ## 7. 已经发现并修过的问题
 
 ### 7.1 任务发送过早

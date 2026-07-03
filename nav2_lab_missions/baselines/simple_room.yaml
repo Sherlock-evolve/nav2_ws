@@ -1,0 +1,15 @@
+name: simple_room
+min_run_count: 5
+required_success_rate: 1.0
+allowed_statuses:
+  - succeeded
+expected_goals:
+  - east_side
+  - north_west
+  - home
+max_attempts_per_run: 3
+max_avg_total_duration_sec: 90.0
+max_avg_final_duration_sec:
+  east_side: 25.0
+  north_west: 45.0
+  home: 70.0
