@@ -37,8 +37,19 @@ def launch_setup(context, *args, **kwargs):
     params_file = LaunchConfiguration('params_file')
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_rviz = LaunchConfiguration('use_rviz')
+    use_gzclient = LaunchConfiguration('use_gzclient')
     explore_timeout = LaunchConfiguration('explore_timeout_sec')
     goal_timeout = LaunchConfiguration('goal_timeout_sec')
+    min_frontier_size = LaunchConfiguration('min_frontier_size')
+    min_goal_distance = LaunchConfiguration('min_goal_distance_m')
+    frontier_bin_size = LaunchConfiguration('frontier_bin_size_m')
+    min_cluster_size = LaunchConfiguration('min_cluster_size')
+    frontier_setback = LaunchConfiguration('frontier_setback_m')
+    blacklist_radius = LaunchConfiguration('blacklist_radius_m')
+    visited_radius = LaunchConfiguration('visited_radius_m')
+    stuck_window = LaunchConfiguration('stuck_window_sec')
+    stuck_threshold = LaunchConfiguration('stuck_threshold_m')
+    post_goal_settle = LaunchConfiguration('post_goal_settle_sec')
 
     return [
         IncludeLaunchDescription(
@@ -50,6 +61,7 @@ def launch_setup(context, *args, **kwargs):
                 'y_pose': y_pose,
                 'yaw': yaw,
                 'use_sim_time': use_sim_time,
+                'use_gzclient': use_gzclient,
             }.items(),
         ),
         # Nav2 in SLAM mode: slam_toolbox publishes /map + map->odom; the full
@@ -78,6 +90,16 @@ def launch_setup(context, *args, **kwargs):
                         'use_sim_time': use_sim_time,
                         'explore_timeout_sec': ParameterValue(explore_timeout, value_type=float),
                         'goal_timeout_sec': ParameterValue(goal_timeout, value_type=float),
+                        'min_frontier_size': ParameterValue(min_frontier_size, value_type=int),
+                        'min_goal_distance_m': ParameterValue(min_goal_distance, value_type=float),
+                        'frontier_bin_size_m': ParameterValue(frontier_bin_size, value_type=float),
+                        'min_cluster_size': ParameterValue(min_cluster_size, value_type=int),
+                        'frontier_setback_m': ParameterValue(frontier_setback, value_type=float),
+                        'blacklist_radius_m': ParameterValue(blacklist_radius, value_type=float),
+                        'visited_radius_m': ParameterValue(visited_radius, value_type=float),
+                        'stuck_window_sec': ParameterValue(stuck_window, value_type=float),
+                        'stuck_threshold_m': ParameterValue(stuck_threshold, value_type=float),
+                        'post_goal_settle_sec': ParameterValue(post_goal_settle, value_type=float),
                     }],
                 ),
             ],
@@ -101,7 +123,18 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('explore_timeout_sec', default_value='1800.0', description='Overall exploration time budget in seconds.'),
         DeclareLaunchArgument('goal_timeout_sec', default_value='90.0', description='Per-goal timeout in seconds.'),
+        DeclareLaunchArgument('min_frontier_size', default_value='5', description='Minimum frontier cell count before treating exploration as complete.'),
+        DeclareLaunchArgument('min_goal_distance_m', default_value='0.5', description='Ignore frontier cells closer than this distance.'),
+        DeclareLaunchArgument('frontier_bin_size_m', default_value='0.5', description='Coarse frontier bucket size in meters.'),
+        DeclareLaunchArgument('min_cluster_size', default_value='8', description='Minimum frontier bucket size preferred as a goal.'),
+        DeclareLaunchArgument('frontier_setback_m', default_value='0.5', description='Pull selected frontier goals back into known free space.'),
+        DeclareLaunchArgument('blacklist_radius_m', default_value='1.0', description='Radius around failed frontiers to avoid retrying.'),
+        DeclareLaunchArgument('visited_radius_m', default_value='0.8', description='Radius around successful frontiers to avoid repeat goals.'),
+        DeclareLaunchArgument('stuck_window_sec', default_value='10.0', description='Seconds without translation before canceling a goal.'),
+        DeclareLaunchArgument('stuck_threshold_m', default_value='0.1', description='Minimum translation that resets the stuck watchdog.'),
+        DeclareLaunchArgument('post_goal_settle_sec', default_value='1.0', description='Wait for a fresh map update after each goal.'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='Use simulation time.'),
         DeclareLaunchArgument('use_rviz', default_value='true', description='Start RViz.'),
+        DeclareLaunchArgument('use_gzclient', default_value='true', description='Start the Gazebo GUI client.'),
         OpaqueFunction(function=launch_setup),
     ])

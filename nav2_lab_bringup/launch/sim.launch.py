@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, SetEnvironmentVariable, TimerAction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -29,6 +30,7 @@ def launch_setup(context, *args, **kwargs):
     x_pose = LaunchConfiguration('x_pose')
     y_pose = LaunchConfiguration('y_pose')
     yaw = LaunchConfiguration('yaw')
+    use_gzclient = LaunchConfiguration('use_gzclient')
 
     turtlebot3_gazebo_share = get_package_share_directory('turtlebot3_gazebo')
     urdf_path = os.path.join(turtlebot3_gazebo_share, 'urdf', f'turtlebot3_{model}.urdf')
@@ -63,6 +65,7 @@ def launch_setup(context, *args, **kwargs):
             additional_env=gazebo_env,
         ),
         ExecuteProcess(
+            condition=IfCondition(use_gzclient),
             cmd=['gzclient', '--gui-client-plugin=libgazebo_ros_eol_gui.so'],
             output='screen',
             additional_env=gazebo_env,
@@ -107,5 +110,6 @@ def generate_launch_description():
         DeclareLaunchArgument('y_pose', default_value='-1.2', description='Initial robot y position.'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='Initial robot yaw.'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='Use Gazebo simulation clock.'),
+        DeclareLaunchArgument('use_gzclient', default_value='true', description='Start the Gazebo GUI client.'),
         OpaqueFunction(function=launch_setup),
     ])

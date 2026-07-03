@@ -199,9 +199,9 @@
 1. 订阅 `/map`（来自 `slam_toolbox`）
 2. 用 numpy 检测前沿（free cell 紧邻 unknown cell）
 3. 用 TF 取机器人在 `map` 坐标系下的位姿
-4. 选离机器人最近的前沿作为目标，朝行进方向给出 yaw
+4. 按前沿簇选择目标，并把目标回退到已知 free 区
 5. 通过 `NavigateToPose` action 发目标，等待结果
-6. 目标失败/超时则把该前沿加入黑名单，避免反复撞墙
+6. 目标成功则把该前沿记为已访问，失败/超时/卡死则加入黑名单，避免反复发同一片目标
 7. 循环直到没有前沿（地图探索完成）或总时长预算耗尽
 
 它复用了 `mission_runner.py` 的范式：同样是自驱动 Node（无顶层 spin），用 `ActionClient(self, NavigateToPose, ...)`，并用 `spin_until_future_complete` / `spin_once` 推进。
@@ -214,8 +214,16 @@
 - `goal_timeout_sec`（单目标超时，默认 90s）
 - `explore_timeout_sec`（总探索预算，默认 1800s）
 - `min_frontier_size`（少于该数量的前沿视为探索完成，默认 5）
-- `blacklist_radius_m`（失败前沿的屏蔽半径，默认 1.0m）
+- `frontier_bin_size_m`（前沿聚类桶大小，默认 0.5m）
+- `min_cluster_size`（优先选择不少于该数量的前沿桶；没有大桶时回退到小桶，默认 8）
+- `frontier_setback_m`（目标沿机器人方向回退进已知 free 区，默认 0.5m）
 - `min_goal_distance_m`（过近的目标忽略，默认 0.5m）
+- `blacklist_radius_m`（失败/卡死目标的屏蔽半径，默认 1.0m）
+- `visited_radius_m`（已成功到达前沿的屏蔽半径，默认 0.8m）
+- `stuck_window_sec` / `stuck_threshold_m`（卡死看门狗：N 秒内位移不足阈值则取消当前目标，默认 10s / 0.1m）
+- `post_goal_settle_sec`（目标结束后等待新地图刷新的时间，默认 1s）
+
+> 抗「原地转/重复目标」设计：目标选在**前沿簇心**而非单格（避免边界抖动产生连续微目标），并回退进已知空地（不贴 unknown 边界）；成功到达的前沿会按 `visited_radius_m` 记为已访问，失败/卡死目标会按 `blacklist_radius_m` 屏蔽；执行期间有**卡死看门狗**，机器人原地转超过 `stuck_window_sec` 就判定 `stuck` 取消，不再傻等满整个 `goal_timeout_sec`。空旷处仍转得久时，可调大 `min_cluster_size`、调大 `visited_radius_m` 或调小 `stuck_window_sec`。
 
 输出文件位置：
 
@@ -420,11 +428,21 @@ RViz 会同步显示地图生长、代价地图和路径。探索过程会写入
 ros2 launch nav2_lab_bringup explore.launch.py world:=real explore_timeout_sec:=3600 goal_timeout_sec:=120
 ```
 
+无桌面/远程验证时可关闭图形界面：
+
+```bash
+ros2 launch nav2_lab_bringup explore.launch.py world:=real use_rviz:=false use_gzclient:=false
+```
+
 约定：
 
 - `world:=real` 解析为 `nav2_lab_worlds/worlds/real.world`，与 §6.3 一致
 - `explore_timeout_sec`：总探索预算（默认 1800s）
 - `goal_timeout_sec`：单目标超时（默认 90s）
+- `visited_radius_m`：成功到达后屏蔽同一片前沿的半径（默认 0.8m）
+- `blacklist_radius_m`：失败/卡死后屏蔽前沿的半径（默认 1.0m）
+- `min_cluster_size` / `frontier_bin_size_m`：前沿簇优先级与聚类粗细
+- `stuck_window_sec` / `stuck_threshold_m`：原地转或卡死判定
 
 探索完成（日志出现 `No more frontiers detected`）后，在另一个终端保存地图：
 
