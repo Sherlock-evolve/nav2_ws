@@ -35,6 +35,7 @@ def launch_setup(context, *args, **kwargs):
     y_pose = LaunchConfiguration('y_pose')
     yaw = LaunchConfiguration('yaw')
     params_file = LaunchConfiguration('params_file')
+    bt_xml = LaunchConfiguration('bt_xml')
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_rviz = LaunchConfiguration('use_rviz')
     use_gzclient = LaunchConfiguration('use_gzclient')
@@ -72,6 +73,7 @@ def launch_setup(context, *args, **kwargs):
             PythonLaunchDescriptionSource(os.path.join(bringup_share, 'launch', 'navigation.launch.py')),
             launch_arguments={
                 'params_file': params_file,
+                'bt_xml': bt_xml,
                 'slam': 'True',
                 'use_sim_time': use_sim_time,
                 'use_rviz': use_rviz,
@@ -120,6 +122,14 @@ def generate_launch_description():
             'params_file',
             default_value=os.path.join(bringup_share, 'params', 'nav2_params.yaml'),
             description='Full path to the Nav2 parameter file.',
+        ),
+        DeclareLaunchArgument(
+            'bt_xml',
+            default_value='',
+            description=(
+                'Optional NavigateToPose BT XML name under '
+                'nav2_lab_bringup/behavior_trees or absolute .xml path.'
+            ),
         ),
         DeclareLaunchArgument('explore_timeout_sec', default_value='1800.0', description='Overall exploration time budget in seconds.'),
         DeclareLaunchArgument('goal_timeout_sec', default_value='90.0', description='Per-goal timeout in seconds.'),

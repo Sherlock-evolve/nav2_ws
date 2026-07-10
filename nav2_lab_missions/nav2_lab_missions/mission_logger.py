@@ -43,7 +43,7 @@ class MissionLogger(Node):
         if path:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             return path
-        output_dir = '/tmp/nav2_lab_results'
+        output_dir = os.environ.get('NAV2_LAB_RESULTS_DIR', '/tmp/nav2_lab_results')
         os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         return os.path.join(output_dir, f'{timestamp}_telemetry.csv')

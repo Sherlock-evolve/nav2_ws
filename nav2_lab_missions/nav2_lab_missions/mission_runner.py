@@ -66,6 +66,7 @@ class MissionRunner(Node):
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self._amcl_pose_callback, 10)
 
         self._last_feedback = ''
+        self._last_recovery_count = 0
         self._amcl_pose_received = False
 
     def run(self):
@@ -101,7 +102,14 @@ class MissionRunner(Node):
         with open(result_file, 'w', newline='', encoding='utf-8') as csv_file:
             writer = csv.DictWriter(
                 csv_file,
-                fieldnames=['goal_name', 'attempt', 'status', 'duration_sec', 'message'],
+                fieldnames=[
+                    'goal_name',
+                    'attempt',
+                    'status',
+                    'duration_sec',
+                    'recovery_count',
+                    'message',
+                ],
             )
             writer.writeheader()
 
@@ -136,7 +144,7 @@ class MissionRunner(Node):
         if path:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             return path
-        output_dir = '/tmp/nav2_lab_results'
+        output_dir = os.environ.get('NAV2_LAB_RESULTS_DIR', '/tmp/nav2_lab_results')
         os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         return os.path.join(output_dir, f'{timestamp}_mission.csv')
@@ -147,6 +155,7 @@ class MissionRunner(Node):
         nav_goal = NavigateToPose.Goal()
         nav_goal.pose = pose
         self._last_feedback = ''
+        self._last_recovery_count = 0
 
         self.get_logger().info(f"Sending goal '{name}' attempt {attempt}: x={goal['x']}, y={goal['y']}, yaw={goal['yaw']}")
         start = time.monotonic()
@@ -244,6 +253,9 @@ class MissionRunner(Node):
         distance = getattr(feedback, 'distance_remaining', None)
         if distance is not None:
             self._last_feedback = f'distance_remaining={distance:.3f}'
+        recoveries = getattr(feedback, 'number_of_recoveries', None)
+        if recoveries is not None:
+            self._last_recovery_count = int(recoveries)
 
     def _result_row(self, name, attempt, status, start, message):
         return {
@@ -251,6 +263,7 @@ class MissionRunner(Node):
             'attempt': attempt,
             'status': status,
             'duration_sec': f'{time.monotonic() - start:.3f}',
+            'recovery_count': self._last_recovery_count,
             'message': message,
         }
 

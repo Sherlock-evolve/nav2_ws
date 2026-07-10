@@ -394,9 +394,10 @@ class ExploreRunner(Node):
             if directory:
                 os.makedirs(directory, exist_ok=True)
             return path
-        os.makedirs('/tmp/nav2_lab_results', exist_ok=True)
+        output_dir = os.environ.get('NAV2_LAB_RESULTS_DIR', '/tmp/nav2_lab_results')
+        os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        return f'/tmp/nav2_lab_results/{timestamp}_explore.csv'
+        return os.path.join(output_dir, f'{timestamp}_explore.csv')
 
     def _wait_for_map_settle(self, previous_sequence):
         if self._post_goal_settle <= 0.0:

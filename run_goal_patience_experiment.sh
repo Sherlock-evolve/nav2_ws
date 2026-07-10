@@ -3,14 +3,14 @@ set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./run_simple_room_baseline.sh [RUN_COUNT]
+Usage: ./run_goal_patience_experiment.sh [RUN_COUNT]
 
-Run the simple_room mission repeatedly, then check the built-in baseline.
+Run the goal_patience mission repeatedly for BT behavior-tree comparison.
 
 Environment:
   NAV2_LAB_SKIP_BUILD=1       Skip colcon build before running.
   NAV2_LAB_RESULTS_DIR=PATH   Override result directory. Defaults to /tmp/nav2_lab_results.
-  NAV2_LAB_EXPERIMENT=NAME    Label this result batch. Defaults to default_bt or bt_<BT name>.
+  NAV2_LAB_EXPERIMENT=NAME    Label this result batch.
   NAV2_LAB_BT_XML=NAME_OR_PATH Override NavigateToPose BT XML for all runs.
   ROS_LOG_DIR=PATH            Override ROS log directory. Defaults to /tmp/ros_logs.
 EOF
@@ -22,8 +22,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 run_count="${1:-5}"
-if ! [[ "${run_count}" =~ ^[0-9]+$ ]] || (( run_count < 5 )); then
-  echo "RUN_COUNT must be an integer >= 5 for the simple_room baseline." >&2
+if ! [[ "${run_count}" =~ ^[0-9]+$ ]] || (( run_count < 1 )); then
+  echo "RUN_COUNT must be an integer >= 1." >&2
   exit 2
 fi
 
@@ -43,9 +43,9 @@ sanitize_label() {
 raw_experiment="${NAV2_LAB_EXPERIMENT:-}"
 if [[ -z "${raw_experiment}" ]]; then
   if [[ -n "${bt_xml}" ]]; then
-    raw_experiment="bt_$(sanitize_label "${bt_xml}")"
+    raw_experiment="goal_patience_bt_$(sanitize_label "${bt_xml}")"
   else
-    raw_experiment="default_bt"
+    raw_experiment="goal_patience_default_bt"
   fi
 fi
 experiment="$(sanitize_label "${raw_experiment}")"
@@ -59,7 +59,7 @@ source /opt/ros/humble/setup.bash
 set -u
 
 if [[ "${NAV2_LAB_SKIP_BUILD:-0}" != "1" ]]; then
-  echo "[baseline] Building workspace"
+  echo "[goal_patience] Building workspace"
   colcon build --symlink-install
 fi
 
@@ -86,41 +86,44 @@ if (( ${#old_results[@]} > 0 )); then
   archive_dir="${result_dir}/archive/$(date +%Y%m%d_%H%M%S)_${archive_label}"
   mkdir -p "${archive_dir}"
   mv "${old_results[@]}" "${archive_dir}/"
-  echo "[baseline] Archived ${#old_results[@]} old result file(s) to ${archive_dir}"
+  echo "[goal_patience] Archived ${#old_results[@]} old result file(s) to ${archive_dir}"
 fi
 shopt -u nullglob
 
 {
   printf 'experiment=%s\n' "${experiment}"
+  printf 'world=goal_patience\n'
+  printf 'map=simple_room\n'
+  printf 'mission=goal_patience_mission\n'
   printf 'bt_xml=%s\n' "${bt_xml}"
   printf 'run_count=%s\n' "${run_count}"
   printf 'started_at=%s\n' "$(date --iso-8601=seconds)"
 } > "${metadata_file}"
 
-echo "[baseline] Experiment: ${experiment}"
+echo "[goal_patience] Experiment: ${experiment}"
 
 bt_launch_args=()
 if [[ -n "${bt_xml}" ]]; then
   bt_launch_args=("bt_xml:=${bt_xml}")
-  echo "[baseline] Using custom BT XML: ${bt_xml}"
+  echo "[goal_patience] Using custom BT XML: ${bt_xml}"
 fi
 
 for ((run_index = 1; run_index <= run_count; run_index++)); do
-  echo "[baseline] Starting simple_room run ${run_index}/${run_count}"
+  echo "[goal_patience] Starting run ${run_index}/${run_count}"
   ros2 launch nav2_lab_bringup lab.launch.py \
-    world:=simple_room \
+    world:=goal_patience \
     map:=simple_room \
-    mission:=simple_room_mission \
+    mission:=goal_patience_mission \
     run_mission:=true \
     shutdown_on_mission_complete:=true \
     use_rviz:=false \
     use_gzclient:=false \
     "${bt_launch_args[@]}"
-  echo "[baseline] Finished simple_room run ${run_index}/${run_count}"
+  echo "[goal_patience] Finished run ${run_index}/${run_count}"
   sleep 2
 done
 
 printf 'completed_at=%s\n' "$(date --iso-8601=seconds)" >> "${metadata_file}"
 
-echo "[baseline] Checking simple_room baseline"
-ros2 run nav2_lab_missions mission_stats "${result_dir}" --baseline simple_room
+echo "[goal_patience] Summarizing mission results"
+ros2 run nav2_lab_missions mission_stats "${result_dir}" --require-success

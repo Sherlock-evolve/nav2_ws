@@ -4,8 +4,12 @@ import glob
 import os
 from collections import Counter, OrderedDict, defaultdict
 
+from ament_index_python.packages import (
+    PackageNotFoundError,
+    get_package_share_directory,
+)
+
 import yaml
-from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 
 
 SUCCESS_STATUS = 'succeeded'
@@ -15,6 +19,15 @@ DEFAULT_PATTERN = '/tmp/nav2_lab_results/*_mission.csv'
 def _as_float(value, default=0.0):
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int(value, default=0):
+    try:
+        if value is None or value == '':
+            return default
+        return int(float(value))
     except (TypeError, ValueError):
         return default
 
@@ -59,7 +72,12 @@ def summarize_file(path):
         goal_name: _as_float(row.get('duration_sec'))
         for goal_name, row in final_rows.items()
     }
+    final_recoveries = {
+        goal_name: _as_int(row.get('recovery_count'))
+        for goal_name, row in final_rows.items()
+    }
     total_duration = sum(_as_float(row.get('duration_sec')) for row in rows)
+    total_recoveries = sum(_as_int(row.get('recovery_count')) for row in rows)
     success = bool(final_statuses) and all(
         status == SUCCESS_STATUS for status in final_statuses.values()
     )
@@ -71,9 +89,11 @@ def summarize_file(path):
         'goal_count': len(final_rows),
         'success': success,
         'total_duration_sec': total_duration,
+        'total_recoveries': total_recoveries,
         'status_counts': Counter(row.get('status', '') for row in rows),
         'final_statuses': final_statuses,
         'final_durations_sec': final_durations,
+        'final_recoveries': final_recoveries,
     }
 
 
@@ -82,6 +102,7 @@ def summarize_files(paths):
     status_counts = Counter()
     final_by_goal = defaultdict(Counter)
     duration_by_goal = defaultdict(list)
+    recovery_by_goal = defaultdict(list)
 
     for summary in file_summaries:
         status_counts.update(summary['status_counts'])
@@ -90,11 +111,15 @@ def summarize_files(paths):
             duration_by_goal[goal_name].append(
                 summary['final_durations_sec'][goal_name]
             )
+            recovery_by_goal[goal_name].append(
+                summary.get('final_recoveries', {}).get(goal_name, 0)
+            )
 
     run_count = len(file_summaries)
     successful_runs = sum(1 for summary in file_summaries if summary['success'])
     total_attempts = sum(summary['attempt_count'] for summary in file_summaries)
     total_duration = sum(summary['total_duration_sec'] for summary in file_summaries)
+    total_recoveries = sum(summary.get('total_recoveries', 0) for summary in file_summaries)
 
     return {
         'files': file_summaries,
@@ -103,10 +128,235 @@ def summarize_files(paths):
         'success_rate': 0.0 if run_count == 0 else successful_runs / run_count,
         'total_attempts': total_attempts,
         'total_duration_sec': total_duration,
+        'total_recoveries': total_recoveries,
         'status_counts': status_counts,
         'final_by_goal': final_by_goal,
         'duration_by_goal': duration_by_goal,
+        'recovery_by_goal': recovery_by_goal,
     }
+
+
+def _average(values):
+    return 0.0 if not values else sum(values) / len(values)
+
+
+def _average_total_duration(summary):
+    if summary['run_count'] == 0:
+        return 0.0
+    return summary['total_duration_sec'] / summary['run_count']
+
+
+def _average_attempts(summary):
+    if summary['run_count'] == 0:
+        return 0.0
+    return summary['total_attempts'] / summary['run_count']
+
+
+def _average_recoveries(summary):
+    if summary['run_count'] == 0:
+        return 0.0
+    return summary.get('total_recoveries', 0) / summary['run_count']
+
+
+def _format_numeric_delta(left, right, unit=''):
+    delta = right - left
+    if left == 0.0:
+        return (
+            f'{left:.3f}{unit} -> {right:.3f}{unit} '
+            f'(delta {delta:+.3f}{unit})'
+        )
+    percent = delta / left * 100.0
+    return (
+        f'{left:.3f}{unit} -> {right:.3f}{unit} '
+        f'(delta {delta:+.3f}{unit}, {percent:+.1f}%)'
+    )
+
+
+def compare_summaries(left, right):
+    """Build aggregate deltas between two mission summary dictionaries."""
+    goal_names = sorted(
+        set(left['duration_by_goal'])
+        | set(right['duration_by_goal'])
+        | set(left.get('recovery_by_goal', {}))
+        | set(right.get('recovery_by_goal', {}))
+    )
+    status_names = sorted(
+        set(left['status_counts']) | set(right['status_counts'])
+    )
+
+    goals = OrderedDict()
+    for goal_name in goal_names:
+        goals[goal_name] = {
+            'left_avg_final_duration_sec': _average(
+                left['duration_by_goal'].get(goal_name, [])
+            ),
+            'right_avg_final_duration_sec': _average(
+                right['duration_by_goal'].get(goal_name, [])
+            ),
+            'left_avg_final_recoveries': _average(
+                left.get('recovery_by_goal', {}).get(goal_name, [])
+            ),
+            'right_avg_final_recoveries': _average(
+                right.get('recovery_by_goal', {}).get(goal_name, [])
+            ),
+            'left_samples': len(left['duration_by_goal'].get(goal_name, [])),
+            'right_samples': len(right['duration_by_goal'].get(goal_name, [])),
+        }
+
+    statuses = OrderedDict()
+    for status in status_names:
+        left_count = left['status_counts'].get(status, 0)
+        right_count = right['status_counts'].get(status, 0)
+        statuses[status] = {
+            'left_count': left_count,
+            'right_count': right_count,
+            'delta': right_count - left_count,
+        }
+
+    return {
+        'left': left,
+        'right': right,
+        'left_success_rate': left['success_rate'],
+        'right_success_rate': right['success_rate'],
+        'avg_total_duration_sec': {
+            'left': _average_total_duration(left),
+            'right': _average_total_duration(right),
+        },
+        'avg_attempts_per_run': {
+            'left': _average_attempts(left),
+            'right': _average_attempts(right),
+        },
+        'avg_recoveries_per_run': {
+            'left': _average_recoveries(left),
+            'right': _average_recoveries(right),
+        },
+        'goals': goals,
+        'statuses': statuses,
+    }
+
+
+def format_comparison(comparison, left_label='left', right_label='right'):
+    """Format a side-by-side mission summary comparison."""
+    left = comparison['left']
+    right = comparison['right']
+    success_delta = (
+        comparison['right_success_rate'] - comparison['left_success_rate']
+    ) * 100.0
+
+    lines = [f'Comparison: {left_label} -> {right_label}']
+    lines.append(f'Runs: {left["run_count"]} -> {right["run_count"]}')
+    lines.append(
+        f'Successful runs: '
+        f'{left["successful_runs"]}/{left["run_count"]} '
+        f'({comparison["left_success_rate"] * 100.0:.1f}%) -> '
+        f'{right["successful_runs"]}/{right["run_count"]} '
+        f'({comparison["right_success_rate"] * 100.0:.1f}%) '
+        f'(delta {success_delta:+.1f} pp)'
+    )
+    lines.append(
+        'Avg total duration: '
+        + _format_numeric_delta(
+            comparison['avg_total_duration_sec']['left'],
+            comparison['avg_total_duration_sec']['right'],
+            's',
+        )
+    )
+    lines.append(
+        'Avg attempts/run: '
+        + _format_numeric_delta(
+            comparison['avg_attempts_per_run']['left'],
+            comparison['avg_attempts_per_run']['right'],
+        )
+    )
+    lines.append(
+        'Avg recoveries/run: '
+        + _format_numeric_delta(
+            comparison['avg_recoveries_per_run']['left'],
+            comparison['avg_recoveries_per_run']['right'],
+        )
+    )
+
+    if comparison['statuses']:
+        lines.append('Status count deltas:')
+        for status, values in comparison['statuses'].items():
+            lines.append(
+                f'  {status}: {values["left_count"]} -> '
+                f'{values["right_count"]} (delta {values["delta"]:+d})'
+            )
+
+    if comparison['goals']:
+        lines.append('Goal avg final duration deltas:')
+        for goal_name, values in comparison['goals'].items():
+            left_samples = values['left_samples']
+            right_samples = values['right_samples']
+            sample_text = f'n={left_samples}->{right_samples}'
+            lines.append(
+                f'  {goal_name}: '
+                + _format_numeric_delta(
+                    values['left_avg_final_duration_sec'],
+                    values['right_avg_final_duration_sec'],
+                    's',
+                )
+                + f' ({sample_text})'
+            )
+
+        lines.append('Goal avg final recovery deltas:')
+        for goal_name, values in comparison['goals'].items():
+            left_samples = values['left_samples']
+            right_samples = values['right_samples']
+            sample_text = f'n={left_samples}->{right_samples}'
+            lines.append(
+                f'  {goal_name}: '
+                + _format_numeric_delta(
+                    values['left_avg_final_recoveries'],
+                    values['right_avg_final_recoveries'],
+                )
+                + f' ({sample_text})'
+            )
+
+    return '\n'.join(lines)
+
+
+def _format_attempt(row):
+    return (
+        f"a{row.get('attempt', '')}:"
+        f"{row.get('status', '')} "
+        f"{_as_float(row.get('duration_sec')):.3f}s "
+        f"rec={_as_int(row.get('recovery_count'))}"
+    )
+
+
+def format_run_details(summary, title='Run details'):
+    """Format per-run goal attempt details for diagnosis."""
+    lines = [f'{title}:']
+    if not summary['files']:
+        lines.append('  no mission files')
+        return '\n'.join(lines)
+
+    for index, file_summary in enumerate(summary['files'], 1):
+        run_status = 'succeeded' if file_summary['success'] else 'failed'
+        lines.append(
+            f'  {index}. {os.path.basename(file_summary["path"])}: '
+            f'{run_status}, attempts={file_summary["attempt_count"]}, '
+            f'total={file_summary["total_duration_sec"]:.3f}s, '
+            f'recoveries={file_summary.get("total_recoveries", 0)}'
+        )
+
+        attempts_by_goal = OrderedDict()
+        for row in file_summary['rows']:
+            attempts_by_goal.setdefault(row['goal_name'], []).append(row)
+
+        for goal_name, attempts in attempts_by_goal.items():
+            final = attempts[-1]
+            attempt_text = '; '.join(_format_attempt(row) for row in attempts)
+            lines.append(
+                f'    {goal_name}: final={final.get("status", "")}, '
+                f'final_duration={_as_float(final.get("duration_sec")):.3f}s, '
+                f'final_recoveries={_as_int(final.get("recovery_count"))}, '
+                f'attempts=[{attempt_text}]'
+            )
+
+    return '\n'.join(lines)
 
 
 def resolve_baseline(value):
@@ -202,6 +452,19 @@ def check_baseline(summary, baseline):
                 f'avg_total_duration {avg_total_duration:.3f}s <= {limit:.3f}s'
             )
 
+    max_avg_recoveries = baseline.get('max_avg_recoveries_per_run')
+    if max_avg_recoveries is not None and run_count > 0:
+        avg_recoveries = summary.get('total_recoveries', 0) / run_count
+        limit = float(max_avg_recoveries)
+        if avg_recoveries > limit:
+            failures.append(
+                f'avg_recoveries_per_run {avg_recoveries:.3f} > {limit:.3f}'
+            )
+        else:
+            details.append(
+                f'avg_recoveries_per_run {avg_recoveries:.3f} <= {limit:.3f}'
+            )
+
     max_goal_durations = baseline.get('max_avg_final_duration_sec', {})
     for goal_name, limit_value in max_goal_durations.items():
         durations = summary['duration_by_goal'].get(goal_name, [])
@@ -219,6 +482,25 @@ def check_baseline(summary, baseline):
             details.append(
                 f'{goal_name}: avg_final_duration '
                 f'{avg_duration:.3f}s <= {limit:.3f}s'
+            )
+
+    max_goal_recoveries = baseline.get('max_avg_final_recoveries', {})
+    for goal_name, limit_value in max_goal_recoveries.items():
+        recoveries = summary.get('recovery_by_goal', {}).get(goal_name, [])
+        if not recoveries:
+            failures.append(f'{goal_name}: no recovery samples')
+            continue
+        avg_recoveries = sum(recoveries) / len(recoveries)
+        limit = float(limit_value)
+        if avg_recoveries > limit:
+            failures.append(
+                f'{goal_name}: avg_final_recoveries '
+                f'{avg_recoveries:.3f} > {limit:.3f}'
+            )
+        else:
+            details.append(
+                f'{goal_name}: avg_final_recoveries '
+                f'{avg_recoveries:.3f} <= {limit:.3f}'
             )
 
     return {
@@ -247,6 +529,7 @@ def format_summary(summary):
     lines.append(f'Mission files: {run_count}')
     lines.append(f'Successful runs: {successful_runs}/{run_count} ({success_rate:.1f}%)')
     lines.append(f'Total attempts: {summary["total_attempts"]}')
+    lines.append(f'Total recoveries: {summary.get("total_recoveries", 0)}')
     lines.append(f'Total recorded duration: {summary["total_duration_sec"]:.3f}s')
 
     if summary['status_counts']:
@@ -259,15 +542,18 @@ def format_summary(summary):
         for goal_name in sorted(summary['final_by_goal']):
             counts = summary['final_by_goal'][goal_name]
             durations = summary['duration_by_goal'][goal_name]
+            recoveries = summary.get('recovery_by_goal', {}).get(goal_name, [])
             succeeded = counts.get(SUCCESS_STATUS, 0)
             total = sum(counts.values())
             avg_duration = sum(durations) / len(durations)
+            avg_recoveries = sum(recoveries) / len(recoveries) if recoveries else 0.0
             status_text = ', '.join(
                 f'{status}={count}' for status, count in sorted(counts.items())
             )
             lines.append(
                 f'  {goal_name}: {succeeded}/{total} succeeded, '
-                f'avg_final_duration={avg_duration:.3f}s ({status_text})'
+                f'avg_final_duration={avg_duration:.3f}s, '
+                f'avg_final_recoveries={avg_recoveries:.3f} ({status_text})'
             )
 
     failed_files = [
@@ -310,7 +596,57 @@ def main(args=None):
             'Example: --baseline simple_room'
         ),
     )
+    parser.add_argument(
+        '--compare',
+        nargs=2,
+        metavar=('LEFT', 'RIGHT'),
+        help='Compare two CSV files, directories, or glob patterns.',
+    )
+    parser.add_argument(
+        '--labels',
+        nargs=2,
+        default=['left', 'right'],
+        metavar=('LEFT_LABEL', 'RIGHT_LABEL'),
+        help='Labels used with --compare output.',
+    )
+    parser.add_argument(
+        '--details',
+        action='store_true',
+        help='Print per-run goal attempt details after the aggregate summary.',
+    )
     parsed = parser.parse_args(args=args)
+
+    if parsed.compare:
+        left_paths = expand_inputs([parsed.compare[0]])
+        right_paths = expand_inputs([parsed.compare[1]])
+        missing = [
+            path for path in left_paths + right_paths
+            if not os.path.exists(path)
+        ]
+        if not left_paths or not right_paths:
+            print('No mission CSV files found for comparison input.')
+            return 2
+        if missing:
+            print('Missing mission CSV files:')
+            for path in missing:
+                print(f'  {path}')
+            return 2
+        left_summary = summarize_files(left_paths)
+        right_summary = summarize_files(right_paths)
+        comparison = compare_summaries(left_summary, right_summary)
+        print(
+            format_comparison(
+                comparison,
+                parsed.labels[0],
+                parsed.labels[1],
+            )
+        )
+        if parsed.details:
+            print()
+            print(format_run_details(left_summary, f'{parsed.labels[0]} run details'))
+            print()
+            print(format_run_details(right_summary, f'{parsed.labels[1]} run details'))
+        return 0
 
     paths = expand_inputs(parsed.paths)
     if not paths:
@@ -326,6 +662,9 @@ def main(args=None):
 
     summary = summarize_files(paths)
     print(format_summary(summary))
+    if parsed.details:
+        print()
+        print(format_run_details(summary))
 
     baseline_result = None
     if parsed.baseline:

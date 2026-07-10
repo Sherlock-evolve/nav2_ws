@@ -1,4 +1,7 @@
 import os
+import tempfile
+
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -32,12 +35,67 @@ def _resolve_map(map_name, package_share):
     return installed_map
 
 
+def _resolve_behavior_tree(value, package_share):
+    expanded = os.path.expanduser(value)
+    if os.path.isabs(expanded):
+        return expanded
+
+    candidate = expanded
+    if not candidate.endswith('.xml'):
+        candidate = f'{candidate}.xml'
+
+    installed_tree = os.path.join(package_share, 'behavior_trees', candidate)
+    if os.path.exists(installed_tree):
+        return installed_tree
+
+    package_xml = os.path.join(package_share, 'package.xml')
+    if os.path.islink(package_xml):
+        source_package = os.path.dirname(os.path.realpath(package_xml))
+        source_tree = os.path.join(source_package, 'behavior_trees', candidate)
+        if os.path.exists(source_tree):
+            return source_tree
+
+    return installed_tree
+
+
+def _params_file_with_bt_override(params_file, bt_xml, package_share):
+    expanded_params_file = os.path.expanduser(params_file)
+    if not bt_xml:
+        return expanded_params_file
+
+    bt_xml_file = _resolve_behavior_tree(bt_xml, package_share)
+    if not os.path.exists(bt_xml_file):
+        raise FileNotFoundError(f'BT XML file not found: {bt_xml_file}')
+
+    with open(expanded_params_file, 'r', encoding='utf-8') as stream:
+        params = yaml.safe_load(stream) or {}
+
+    bt_params = params.setdefault('bt_navigator', {}).setdefault('ros__parameters', {})
+    bt_params.pop('default_bt_xml_filename', None)
+    bt_params['default_nav_to_pose_bt_xml'] = bt_xml_file
+
+    temp_file = tempfile.NamedTemporaryFile(
+        mode='w',
+        encoding='utf-8',
+        prefix='nav2_lab_nav2_params_',
+        suffix='.yaml',
+        delete=False,
+    )
+    with temp_file:
+        yaml.safe_dump(params, temp_file, sort_keys=False)
+    return temp_file.name
+
+
 def launch_setup(context, *args, **kwargs):
     pkg_share = get_package_share_directory('nav2_lab_bringup')
     nav2_bringup_launch_dir = os.path.join(get_package_share_directory('nav2_bringup'), 'launch')
 
     map_file = _resolve_map(LaunchConfiguration('map').perform(context), pkg_share)
-    params_file = LaunchConfiguration('params_file')
+    params_file = _params_file_with_bt_override(
+        LaunchConfiguration('params_file').perform(context),
+        LaunchConfiguration('bt_xml').perform(context),
+        pkg_share,
+    )
     rviz_config = LaunchConfiguration('rviz_config')
     slam = LaunchConfiguration('slam')
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -80,6 +138,14 @@ def generate_launch_description():
             'params_file',
             default_value=os.path.join(pkg_share, 'params', 'nav2_params.yaml'),
             description='Full path to the Nav2 parameter file.',
+        ),
+        DeclareLaunchArgument(
+            'bt_xml',
+            default_value='',
+            description=(
+                'Optional NavigateToPose BT XML name under '
+                'nav2_lab_bringup/behavior_trees or absolute .xml path.'
+            ),
         ),
         DeclareLaunchArgument(
             'rviz_config',

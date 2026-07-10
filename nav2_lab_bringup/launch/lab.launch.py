@@ -51,6 +51,7 @@ def launch_setup(context, *args, **kwargs):
     yaw = LaunchConfiguration('yaw')
     map_file = LaunchConfiguration('map')
     params_file = LaunchConfiguration('params_file')
+    bt_xml = LaunchConfiguration('bt_xml')
     mission = LaunchConfiguration('mission').perform(context)
     mission_file_override = LaunchConfiguration('mission_file').perform(context)
     mission_file = _resolve_config_file(
@@ -105,6 +106,7 @@ def launch_setup(context, *args, **kwargs):
             launch_arguments={
                 'map': map_file,
                 'params_file': params_file,
+                'bt_xml': bt_xml,
                 'slam': slam,
                 'use_sim_time': use_sim_time,
                 'use_rviz': use_rviz,
@@ -147,6 +149,14 @@ def generate_launch_description():
             'params_file',
             default_value=os.path.join(bringup_share, 'params', 'nav2_params.yaml'),
             description='Full path to the Nav2 parameter file.',
+        ),
+        DeclareLaunchArgument(
+            'bt_xml',
+            default_value='',
+            description=(
+                'Optional NavigateToPose BT XML name under '
+                'nav2_lab_bringup/behavior_trees or absolute .xml path.'
+            ),
         ),
         DeclareLaunchArgument(
             'mission',
