@@ -1,299 +1,71 @@
-# nav2_lab 项目总览
+# nav2_lab
 
-## 1. 项目定位
+![ROS 2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros)
+![Gazebo](https://img.shields.io/badge/Gazebo-Classic-2C2C2C?logo=gazebo)
+![Nav2](https://img.shields.io/badge/Nav2-Navigation2-22314E)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Status](https://img.shields.io/badge/status-experiment-orange)
 
-`nav2_lab` 是一个以仿真为起点的 Nav2 学习与实验项目，基于以下组件搭建：
+> 一个以仿真为起点的 **Nav2 实验/学习平台**：拉起仿真、自动导航多目标、记录结果，并自带三个自定义 Nav2 插件（recovery / planner / costmap layer）。
 
-- ROS 2 Humble
-- Gazebo Classic
-- TurtleBot3 Waffle
-- Nav2
-- AMCL
-- SLAM Toolbox
+`nav2_lab` 的目标不是"功能多"，而是 **结构清楚、链路可复现、便于扩展**——从基线导航一路走到自带可切换的自定义插件，且每个扩展都有验证证据。
 
-这是当前工作区中的主项目，用来做可重复启动、自动任务执行、参数调优和后续功能扩展。
+---
 
-当前这一版可以视为 `v1` 基线，目标很明确：
+## ✨ Features
 
-> 拉起仿真，加载地图，完成定位，自动下发导航目标，并记录运行结果。
+- 🗺 **三套场景**：`simple_room` / `real` / `goal_patience`
+- 🤖 **自动任务执行**：顺序下发 `NavigateToPose`，输出 mission / telemetry CSV
+- 📈 **统计与对比**：`mission_stats` 支持基线判定、多批 `--compare`、`--details` 下钻
+- 🧭 **自动探索建图**：前沿探索替掉手动 teleop，适合 `real` 这类大世界
+- 🧩 **三个自定义 Nav2 插件**（均已编译并验证）：
+  - `ObserveSpin` — 智能旋转 recovery（扫障入图）
+  - `StraightLine` — 直线全局规划器（教学）
+  - `MarkerLayer` — 固定点代价衰减 costmap layer
+- 🔁 **一键基线脚本**：连续跑 N 次 + 自动归档 + 基线判定
 
-## 2. 项目结构
+技术栈：ROS 2 Humble · Gazebo Classic · TurtleBot3 Waffle · Nav2 · AMCL · SLAM Toolbox
 
-当前工作区里和这个项目直接相关的主要包有三个。
+---
 
-### 2.1 `nav2_lab_bringup`
-
-这是顶层 bringup 包，负责整体启动和基础资源管理。
-
-职责：
-
-- 启动 Gazebo 仿真
-- 启动 Nav2 定位与导航栈
-- 提供默认参数文件
-- 提供默认地图
-- 提供 RViz 配置
-- 提供实验总入口
-
-主要目录和文件：
-
-- `launch/sim.launch.py`
-- `launch/slam.launch.py`
-- `launch/navigation.launch.py`
-- `launch/explore.launch.py`
-- `launch/lab.launch.py`
-- `params/nav2_params.yaml`
-- `maps/simple_room.yaml`、`maps/simple_room.pgm`（基线室内场景）
-- `maps/real.yaml`、`maps/real.pgm`（`real.world` 的 SLAM 建图成果）
-- `rviz/`
-
-### 2.2 `nav2_lab_worlds`
-
-这个包存放 Gazebo Classic 世界文件。
-
-当前已有世界：
-
-- `worlds/simple_room.world`
-- `worlds/real.world`
-
-用途：
-
-- `simple_room.world`：当前基线验证场景，小型室内房间
-- `real.world`：更大的拟真实环境场景，对应 `maps/real.*` 地图和 `real_world_mission.yaml` 任务
-
-### 2.3 `nav2_lab_missions`
-
-这个包负责自动任务执行与运行过程记录。
-
-职责：
-
-- 发布 `/initialpose`
-- 调用 Nav2 `NavigateToPose` action
-- 等待定位完成和导航栈激活
-- 顺序执行多个导航目标
-- 输出任务结果 CSV
-- 输出遥测日志 CSV
-
-主要文件：
-
-- `config/simple_room_mission.yaml`
-- `nav2_lab_missions/mission_runner.py`
-- `nav2_lab_missions/mission_logger.py`
-
-## 3. 核心源码说明
-
-### 3.1 `lab.launch.py`
-
-路径：
-
-- `nav2_lab_bringup/launch/lab.launch.py`
-
-这是日常使用最核心的总入口。
-
-它主要做三件事：
-
-1. 启动 Gazebo 与机器人模型
-2. 启动 Nav2 定位和导航栈
-3. 按需启动 `mission_runner` 和 `mission_logger`
-
-关键参数：
-
-- `world`：世界名（解析为 `nav2_lab_worlds/worlds/<world>.world`）或绝对 `.world` 路径
-- `model`：TurtleBot3 模型，默认 `waffle`
-- `x_pose` / `y_pose` / `yaw`：机器人初始位姿，默认 `(-1.2, -1.2, 0.0)`
-- `map`：地图名（解析为 `nav2_lab_bringup/maps/<map>.yaml`）或绝对 `.yaml` 路径，默认 `simple_room`
-- `params_file`：Nav2 参数文件
-- `mission`：任务名（解析为 `nav2_lab_missions/config/<mission>.yaml`），默认 `simple_room_mission`
-- `mission_file`：可选，任务名或路径，设置时覆盖 `mission`
-- `slam`：是否以 SLAM 模式启动 Nav2（默认 `False`，走 AMCL）
-- `run_mission`
-- `shutdown_on_mission_complete`：`mission_runner` 退出后是否自动关闭整个 launch，适合批量基线验证
-- `use_sim_time`
-- `use_rviz`
-
-实现说明：`lab.launch.py` 现在用 `OpaqueFunction` 包裹，先声明参数再在运行期把 `map` / `mission` 这类「名字」解析成真实路径（`_resolve_config_file`）。解析顺序是：绝对路径或 `~` 展开 → install 目录里的文件 → symlink-install 情况下回退到源码目录。`navigation.launch.py` 的 `_resolve_map` 也是同样的逻辑。
-
-### 3.2 `navigation.launch.py`
-
-路径：
-
-- `nav2_lab_bringup/launch/navigation.launch.py`
-
-这个启动文件封装了 `nav2_bringup/bringup_launch.py`，负责真正把 Nav2 启起来。
-
-职责：
-
-- 加载静态地图
-- 启动 AMCL
-- 启动 planner / controller / behavior / BT 等导航节点
-- 启动 RViz
-
-它暴露 `slam` 参数：默认 `False` 走 AMCL 定位，设为 `True` 时把 Nav2 切到在线 SLAM（slam_toolbox）。`lab.launch.py` 会把同名的 `slam` 参数透传进来。
-
-当前默认 RViz 配置已经切换为官方配置：
-
-- `/opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz`
-
-这样做的原因是之前那个极简 RViz 配置不够完整，手动调试时地图、目标点交互都不稳定。
-
-### 3.3 `mission_runner.py`
-
-路径：
-
-- `nav2_lab_missions/nav2_lab_missions/mission_runner.py`
-
-这是自动任务节点的核心实现。
-
-当前逻辑：
-
-1. 读取 mission YAML
-2. 等待 `navigate_to_pose` action server
-3. 在短时间窗口内重复发布初始位姿（可被 `publish_initial_pose: false` 跳过）
-4. 等待 `/initialpose` 的订阅端就绪
-5. 等待 `/amcl_pose`（可被 `wait_for_localization: false` 跳过，此时只等激活延时）
-6. 再额外等待几秒，确保 Nav2 完全激活
-7. 依次发送导航目标
-8. 把状态、耗时、反馈写入 CSV
-
-新增的两个可选 mission 字段（默认都是 `true`，对 `simple_room_mission.yaml` 行为不变）：
-
-- `publish_initial_pose`：是否由 `mission_runner` 发布 `/initialpose`，关闭后适合已有外部初始位姿或纯 SLAM 模式
-- `wait_for_localization`：是否等待 `/amcl_pose`，关闭后只按 `nav_activation_delay_sec` 等待 Nav2 激活
-
-这个节点不会直接发布 `/cmd_vel` 控制机器人。
-
-它只负责：
-
-- 发布 `/initialpose`
-- 监听 `/amcl_pose`
-- 通过 `NavigateToPose` action 发目标
-
-真正的运动控制仍然由 Nav2 内部完成。
-
-### 3.4 `mission_logger.py`
-
-路径：
-
-- `nav2_lab_missions/nav2_lab_missions/mission_logger.py`
-
-这是一个轻量级遥测记录节点。
-
-它订阅：
-
-- `/cmd_vel`
-- `/amcl_pose`
-- `/navigate_to_pose/_action/status`
-
-输出文件位置：
-
-- `/tmp/nav2_lab_results/*_telemetry.csv`
-
-### 3.5 `explore_runner.py`
-
-路径：
-
-- `nav2_lab_missions/nav2_lab_missions/explore_runner.py`
-
-这是自动探索建图节点，用来替掉 SLAM 建图阶段手动 `teleop_keyboard` 跑图的步骤，对 `real.world` 这类大世界尤其有用。
-
-它做的事情：
-
-1. 订阅 `/map`（来自 `slam_toolbox`）
-2. 用 numpy 检测前沿（free cell 紧邻 unknown cell）
-3. 用 TF 取机器人在 `map` 坐标系下的位姿
-4. 按前沿簇选择目标，并把目标回退到已知 free 区
-5. 通过 `NavigateToPose` action 发目标，等待结果
-6. 目标成功则把该前沿记为已访问，失败/超时/卡死则加入黑名单，避免反复发同一片目标
-7. 循环直到没有前沿（地图探索完成）或总时长预算耗尽
-
-它复用了 `mission_runner.py` 的范式：同样是自驱动 Node（无顶层 spin），用 `ActionClient(self, NavigateToPose, ...)`，并用 `spin_until_future_complete` / `spin_once` 推进。
-
-这个节点不直接发 `/cmd_vel`，也不发 `/initialpose`（SLAM 模式下不需要）。它只负责发 `NavigateToPose` 目标，真正的运动控制仍由 Nav2 完成。
-
-主要参数（均有默认值，一般不需要改）：
-
-- `map_topic` / `action_name` / `map_frame` / `base_frame`
-- `goal_timeout_sec`（单目标超时，默认 90s）
-- `explore_timeout_sec`（总探索预算，默认 1800s）
-- `min_frontier_size`（少于该数量的前沿视为探索完成，默认 5）
-- `frontier_bin_size_m`（前沿聚类桶大小，默认 0.5m）
-- `min_cluster_size`（优先选择不少于该数量的前沿桶；没有大桶时回退到小桶，默认 8）
-- `frontier_setback_m`（目标沿机器人方向回退进已知 free 区，默认 0.5m）
-- `min_goal_distance_m`（过近的目标忽略，默认 0.5m）
-- `blacklist_radius_m`（失败/卡死目标的屏蔽半径，默认 1.0m）
-- `visited_radius_m`（已成功到达前沿的屏蔽半径，默认 0.8m）
-- `stuck_window_sec` / `stuck_threshold_m`（卡死看门狗：N 秒内位移不足阈值则取消当前目标，默认 10s / 0.1m）
-- `post_goal_settle_sec`（目标结束后等待新地图刷新的时间，默认 1s）
-
-> 抗「原地转/重复目标」设计：目标选在**前沿簇心**而非单格（避免边界抖动产生连续微目标），并回退进已知空地（不贴 unknown 边界）；成功到达的前沿会按 `visited_radius_m` 记为已访问，失败/卡死目标会按 `blacklist_radius_m` 屏蔽；执行期间有**卡死看门狗**，机器人原地转超过 `stuck_window_sec` 就判定 `stuck` 取消，不再傻等满整个 `goal_timeout_sec`。空旷处仍转得久时，可调大 `min_cluster_size`、调大 `visited_radius_m` 或调小 `stuck_window_sec`。
-
-输出文件位置：
-
-- `/tmp/nav2_lab_results/*_explore.csv`
-
-## 4. 任务配置
-
-当前任务配置文件：
-
-- `nav2_lab_missions/config/simple_room_mission.yaml`（基线，对应 `simple_room` 世界/地图）
-- `nav2_lab_missions/config/real_world_mission.yaml`（对应 `real` 世界/地图，尺度大、目标点跨度达到几十米）
-
-当前字段包括：
-
-- `frame_id`
-- `default_timeout_sec`
-- `retry_count`
-- `publish_initial_pose`（可选，默认 `true`）
-- `wait_for_localization`（可选，默认 `true`）
-- `initial_pose`
-- `goals`
-
-`simple_room_mission` 默认任务点包括：
-
-1. `east_side`
-2. `north_west`
-3. `home`
-
-`real_world_mission` 任务点跨度更大，包含 `north_station`、`east_service_road`、`south_service_road`、`west_service_road`、`home`，`default_timeout_sec` 提到 240s。
-
-配置示例：
-
-```yaml
-frame_id: map
-default_timeout_sec: 90.0
-retry_count: 1
-initial_pose:
-  x: -1.2
-  y: -1.2
-  yaw: 0.0
-goals:
-  - name: east_side
-    x: 1.25
-    y: -1.05
-    yaw: 0.0
-```
-
-## 5. 运行数据流
-
-当前自动任务模式下，核心数据流如下：
+## 📁 仓库结构
 
 ```text
-Gazebo TurtleBot3
-  -> 发布 /scan, /odom, /tf
-  -> map_server 发布 /map
-  -> mission_runner 发布 /initialpose
-  -> AMCL 消费 /map + /scan + /odom + /tf
-  -> AMCL 发布 /amcl_pose 和 map -> odom
-  -> mission_runner 发送 NavigateToPose 目标
-  -> bt_navigator 组织整套导航行为
-  -> planner_server 生成全局路径
-  -> controller_server 计算控制量
-  -> /cmd_vel
-  -> Gazebo 差速底盘执行运动
+nav2_ws/
+├── nav2_lab_bringup/          # 顶层启动（ament_cmake, 数据包）
+│   ├── launch/                # sim / slam / navigation / lab / explore
+│   ├── params/                # nav2_params.yaml（插件注册在这里）
+│   ├── maps/                  # simple_room / real
+│   ├── behavior_trees/        # goal_patience / recovery / straight_line
+│   └── rviz/
+├── nav2_lab_worlds/           # Gazebo 世界（ament_cmake, 数据包）
+│   └── worlds/                # simple_room / real / goal_patience
+├── nav2_lab_missions/         # 自动任务节点 + 统计（ament_python）
+│   ├── nav2_lab_missions/     # mission_runner / logger / explore_runner / mission_stats
+│   ├── config/                # *_mission.yaml
+│   ├── baselines/             # simple_room 基线阈值
+│   └── test/
+├── nav2_lab_behaviors/        # ObserveSpin（C++ recovery 插件）
+├── nav2_lab_planners/         # StraightLine（C++ planner 插件）
+├── nav2_lab_costmaps/         # MarkerLayer（C++ costmap layer 插件）
+├── run_simple_room_baseline.sh
+├── run_goal_patience_experiment.sh
+└── README.md
 ```
 
-## 6. 启动方法
+---
 
-### 6.1 编译
+## 🚀 Quick Start
+
+### 前置依赖
+
+ROS 2 Humble + Nav2 + Gazebo Classic + TurtleBot3 功能包（`turtlebot3_gazebo` / `turtlebot3_teleop` 等）已安装，且已 `source /opt/ros/humble/setup.bash`。
+
+```bash
+export TURTLEBOT3_MODEL=waffle
+```
+
+### 编译
 
 ```bash
 cd /path/to/nav2_ws
@@ -302,297 +74,196 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-如需统一日志目录，也可以加上：
+### 跑第一个任务
 
 ```bash
-export ROS_LOG_DIR=/tmp/ros_logs
+# 一键拉起仿真 + Nav2 + 自动任务（simple_room，默认 Navfn）
+ros2 launch nav2_lab_bringup lab.launch.py run_mission:=true
 ```
 
-### 6.2 只启动仿真
+结果落在 `/tmp/nav2_lab_results/*_mission.csv`。
 
-```bash
-ros2 launch nav2_lab_bringup sim.launch.py
-```
+---
 
-常用参数示例：
+## 🎮 启动入口
+
+| 目的 | 命令 |
+| --- | --- |
+| 仅仿真 | `ros2 launch nav2_lab_bringup sim.launch.py` |
+| 自动任务 | `ros2 launch nav2_lab_bringup lab.launch.py run_mission:=true` |
+| 自动探索建图 | `ros2 launch nav2_lab_bringup explore.launch.py world:=real` |
+| 手动 RViz 调试 | `ros2 launch nav2_lab_bringup lab.launch.py run_mission:=false` |
+
+### 手动建图（新世界标准流程）
+
+> 这是**手动 teleop 跑图**流程。如果不想手动遥控，尤其 `real.world` 这种大世界，直接用上面的 **自动探索建图** 让机器人自己跑满地图。
+
+以 `real.world` 为例。
+
+**1. 启动仿真**
 
 ```bash
 ros2 launch nav2_lab_bringup sim.launch.py world:=real
 ```
 
-`sim.launch.py` 启动时会自动把以下路径加入 `GAZEBO_MODEL_PATH`：TurtleBot3 模型目录、`~/gazebo_models`（本地自定义模型）、`/usr/share/gazebo-11/models`。像 `real.world` 这类带自定义模型的场景，把对应模型放到 `~/gazebo_models` 下即可被识别。
-
-### 6.3 新世界标准流程
-
-> 这是**手动**建图流程（teleop 跑图）。如果不想手动遥控，尤其是 `real.world` 这种大世界，可以直接用 §6.6 的自动探索建图，让机器人自己跑满地图。
-
-以 `real.world` 为例，先启动仿真：
-
-```bash
-ros2 launch nav2_lab_bringup sim.launch.py world:=real
-```
-
-另开终端启动键盘控制：
+**2. 另开终端，启动键盘控制**
 
 ```bash
 ros2 run turtlebot3_teleop teleop_keyboard
 ```
 
-另开终端启动 SLAM：
+**3. 再开终端，启动 SLAM**
 
 ```bash
 ros2 launch nav2_lab_bringup slam.launch.py
 ```
 
-建图完成后保存地图。在工作区根目录执行即可，`-f` 后面不要写扩展名，命令会生成 `.yaml` 和 `.pgm`：
+**4. 建图完成后保存地图**（在工作区根目录执行，`-f` 后不带扩展名，会生成 `.yaml` + `.pgm`）
 
 ```bash
 ros2 run nav2_map_server map_saver_cli -f nav2_lab_bringup/maps/real
 ```
 
-保存后停止 SLAM，保持 Gazebo 仿真继续运行，然后用同名地图启动导航：
+**5. 停止 SLAM，保持仿真，用同名地图启动导航**
 
 ```bash
 ros2 launch nav2_lab_bringup navigation.launch.py map:=real
 ```
 
-约定：
+**命名约定**
 
-- `world:=real` 会解析为 `nav2_lab_worlds/worlds/real.world`
-- `map:=real` 会解析为 `nav2_lab_bringup/maps/real.yaml`
-- 如果 `world` 和 `map` 名字不同，需要显式传对应的名字或绝对路径
+- `world:=real` → `nav2_lab_worlds/worlds/real.world`
+- `map:=real` → `nav2_lab_bringup/maps/real.yaml`
+- 若 `world` 与 `map` 名字不同，需显式传对应名字或绝对路径
 
-### 6.4 自动任务入口
+### 自动任务常用参数
 
 ```bash
-ros2 launch nav2_lab_bringup lab.launch.py run_mission:=true
+ros2 launch nav2_lab_bringup lab.launch.py \
+  world:=real map:=real mission:=real_world_mission \
+  run_mission:=true \
+  bt_xml:=nav2_lab_recovery          # 可选：切到自定义 recovery 树
 ```
 
-指定世界和地图：
+`lab.launch.py` 参数：`world` `map` `model` `x_pose/y_pose/yaw` `mission` `bt_xml` `params_file` `slam` `run_mission` `shutdown_on_mission_complete` `use_rviz` `use_sim_time`。名字（`world`/`map`/`mission`/`bt_xml`）会自动解析到对应目录。
+
+> ⚠️ **手动调试坑**：`run_mission:=false` 时没人发 `/initialpose`，必须用 RViz 的 **2D Pose Estimate** 设初始位姿，否则 AMCL 不收敛、nav 栈无法激活。
+
+---
+
+## 🧩 自定义插件
+
+三个插件都走 pluginlib + 对应 Nav2 接口，与内置插件并存、可切换：
+
+| 插件 | base class | 接入点 | 切换方式 | 验证 |
+| --- | --- | --- | --- | --- |
+| **ObserveSpin** | `nav2_core::Behavior` | `behavior_server` | `bt_xml:=nav2_lab_recovery` | ✅ 加载 + 运行时旋转探测 |
+| **StraightLine** | `nav2_core::GlobalPlanner` | `planner_server` | `bt_xml:=nav2_lab_straight_line` | ✅ 加载 + 直线 path + mission |
+| **MarkerLayer** | `nav2_costmap_2d::Layer` | `global_costmap` | params 默认启用 | ✅ 加载 + 影响 Navfn 路径 |
+
+### ObserveSpin（recovery）
+
+默认 recovery 遇障先清空 costmap，在"未建图障碍"场景会陷入"擦图 → 重规划 → 撞墙"死循环。ObserveSpin 失败时**朝 local costmap 更空的一侧旋转**，让激光把未建图障碍扫进 costmap，使下次重规划绕开。继承 `TimedBehavior<SpinAction>`（复用 Spin action），`onRun` 探测左右选向、`onCycleUpdate` 梯形角速度控制。
+
+参数（`behavior_server.observe_spin.*`）：`candidate_angle`(1.57) · `probe_angle`(0.785) · `max_rotational_vel`(1.0) · `min_rotational_vel`(0.4) · `rotational_acc_lim`(3.2) · `simulate_ahead_time`(2.0)
+
+> 实测：goal_patience 场景默认 BT 已能靠实时 costmap 绕开障碍，recovery 触发不多；ObserveSpin 的价值是"智能 recovery"样本与后续实验基础。
+
+### StraightLine（planner）
+
+start→goal 连一条 Bresenham 直线，逐 cell 查 costmap，无致命障碍则输出直线 path，穿障则返回**空 path**。继承 `nav2_core::GlobalPlanner`，`createPlan` 用 `nav2_util::LineIterator` + `Costmap2D::getCost`/`mapToWorld`。Navfn(GridBased) 保留为默认。
+
+参数（`planner_server.LabStraightLine.*`）：`obstacle_cost_threshold`(253.0) · `allow_unknown`(false) · `sample_step`(1)
+
+> 实测：直线特征铁证（返回点严格共线），simple_room 3 goal 全 succeeded。直线遇障即败，只适合干净场景或教学对比。
+
+### MarkerLayer（costmap layer）
+
+在参数化固定点 (x,y) 周围写一圈**线性衰减 cost**（中心 `peak_cost`、边缘 0），用 `std::max` 合并进 master grid（不降低既有 cost）。继承 `nav2_costmap_2d::Layer`，仅依赖参数、无需订阅/TF。默认已加到 `global_costmap` 的 plugins（`static_layer` 之后、`inflation_layer` 之前），改 params 的 `point_x`/`point_y`/`radius` 即可移动标记。
+
+参数（`global_costmap.lab_marker_layer.*`）：`enabled`(true) · `point_x`(0.0) · `point_y`(0.0) · `radius`(0.5) · `peak_cost`(254)
+
+> 实测：marker 压在 north_west 路径上时，Navfn 绕开（mission 仍成功）。
+
+---
+
+## 📊 任务、基线与统计
+
+**任务配置**（`nav2_lab_missions/config/*.yaml`）：`simple_room_mission` / `real_world_mission` / `goal_patience_mission`。字段：`frame_id` `default_timeout_sec` `retry_count` `publish_initial_pose` `wait_for_localization` `initial_pose` `goals`。
+
+**输出**：`mission_runner` 每次运行在 `/tmp/nav2_lab_results/` 生成 `*_mission.csv`（含 `recovery_count`，来自 Nav2 feedback 的 `number_of_recoveries`）；`mission_logger` 生成 `*_telemetry.csv`。
 
 ```bash
-ros2 launch nav2_lab_bringup lab.launch.py world:=real map:=real run_mission:=true
-```
-
-如果任务点不是默认 `simple_room_mission.yaml`，还需要传对应的任务名：
-
-```bash
-ros2 launch nav2_lab_bringup lab.launch.py world:=real map:=real mission:=real_world_mission run_mission:=true
-```
-
-约定：
-
-- `mission:=real_world_mission` 会解析为 `nav2_lab_missions/config/real_world_mission.yaml`
-- `mission_file:=其他任务名` 只作为高级覆盖参数，一般不需要使用；它也支持 `~` 或绝对路径
-
-调试时更推荐显式关闭组件容器模式：
-
-```bash
-ros2 launch nav2_lab_bringup lab.launch.py run_mission:=true use_composition:=False
-```
-
-这样日志更直观，排查问题更方便。
-
-### 6.5 手动 RViz 测试
-
-```bash
-ros2 launch nav2_lab_bringup lab.launch.py run_mission:=false
-```
-
-手动测试流程：
-
-1. 用 `2D Pose Estimate` 设置初始位姿
-2. 等 AMCL 稳定
-3. 用 `Nav2 Goal` 发送目标点
-
-如果 `run_mission:=false`，系统不会自动下发任务点。
-
-### 6.6 自动探索建图
-
-`explore.launch.py` 一条命令拉起「仿真 + SLAM + Nav2 + 探索节点」，机器人会自己朝地图前沿走，把地图跑满，省掉手动 teleop。适合 `real.world` 这种大世界。
-
-```bash
-ros2 launch nav2_lab_bringup explore.launch.py world:=real
-```
-
-它会做的事：
-
-1. 启动 Gazebo（`world:=real`）
-2. 以 SLAM 模式启动 Nav2（`slam_toolbox` 发布 `/map`，AMCL / map_server 不启动）
-3. 延迟约 12s 启动 `explore_runner`，开始前沿探索并持续建图
-
-RViz 会同步显示地图生长、代价地图和路径。探索过程会写入 `/tmp/nav2_lab_results/*_explore.csv`，记录每个目标的状态和耗时。
-
-常用参数（可选）：
-
-```bash
-ros2 launch nav2_lab_bringup explore.launch.py world:=real explore_timeout_sec:=3600 goal_timeout_sec:=120
-```
-
-无桌面/远程验证时可关闭图形界面：
-
-```bash
-ros2 launch nav2_lab_bringup explore.launch.py world:=real use_rviz:=false use_gzclient:=false
-```
-
-约定：
-
-- `world:=real` 解析为 `nav2_lab_worlds/worlds/real.world`，与 §6.3 一致
-- `explore_timeout_sec`：总探索预算（默认 1800s）
-- `goal_timeout_sec`：单目标超时（默认 90s）
-- `visited_radius_m`：成功到达后屏蔽同一片前沿的半径（默认 0.8m）
-- `blacklist_radius_m`：失败/卡死后屏蔽前沿的半径（默认 1.0m）
-- `min_cluster_size` / `frontier_bin_size_m`：前沿簇优先级与聚类粗细
-- `stuck_window_sec` / `stuck_threshold_m`：原地转或卡死判定
-
-探索完成（日志出现 `No more frontiers detected`）后，在另一个终端保存地图：
-
-```bash
-ros2 run nav2_map_server map_saver_cli -f nav2_lab_bringup/maps/real
-```
-
-注意：
-
-- 当前 SLAM 走的是 `slam_toolbox` 的 **sync** 变体（由 `navigation.launch.py` 的 `slam:=True` 提供）。对仿真 TurtleBot3 足够，建图质量受影响时再考虑切到 `online_async`。
-- 探索节点靠 TF 取 `map → base_link` 位姿，靠 `/map` 检测前沿；两者都来自 SLAM 栈，所以必须用 SLAM 模式启动。
-
-### 6.7 基线结果统计
-
-`mission_runner` 每次运行会在 `/tmp/nav2_lab_results` 下生成 `*_mission.csv`。可以用内置统计命令汇总一次或多次运行结果：
-
-```bash
+# 汇总一次或多次
 ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results
-```
-
-如果要把 `simple_room` 当作回归门槛，可以加上 `--require-success`。只要有任意一次 mission 的最终目标状态不是 `succeeded`，命令就会返回非 0：
-
-```bash
+# 设为回归门槛
 ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --require-success
-```
-
-项目内置了 `simple_room` 基线阈值。连续跑完多次 `simple_room_mission` 后，用下面的命令可以直接判定是否符合当前基线：
-
-```bash
+# 用内置 simple_room 基线判定
 ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --baseline simple_room
+# 两批结果对比（如默认 BT vs 自定义 BT）
+ros2 run nav2_lab_missions mission_stats --compare <archive_a> <dir_b> --labels a b
+# 定位具体 run/goal/attempt 的 timeout/recovery
+ros2 run nav2_lab_missions mission_stats /tmp/nav2_lab_results --details
 ```
 
-更推荐直接用脚本完整执行 `simple_room` 基线。它会自动归档旧结果、连续运行 mission，并在最后检查内置基线：
+**一键基线脚本**（自动归档旧结果到 `/tmp/nav2_lab_results/archive/`，写 `metadata.env`）：
 
 ```bash
-./run_simple_room_baseline.sh 5
+./run_simple_room_baseline.sh 5          # simple_room 连跑 5 次 + 基线判定
+./run_goal_patience_experiment.sh 5      # goal_patience 连跑 5 次（可配 NAV2_LAB_BT_XML / NAV2_LAB_EXPERIMENT）
 ```
 
-推荐的基线固化方式：
+---
 
-1. 清空或单独保存旧的 `/tmp/nav2_lab_results/*_mission.csv`
-2. 用 `./run_simple_room_baseline.sh 5` 连续跑 `simple_room_mission`
-3. 确认脚本最后输出 `Baseline check (simple_room): PASS`
-4. 后续修改 launch、参数或算法前后，都先比较这套结果
+## 🔁 数据流
 
-## 7. 已经发现并修过的问题
+```text
+Gazebo TurtleBot3
+  → /scan /odom /tf
+  → map_server 发布 /map
+  → mission_runner 发 /initialpose
+  → AMCL 消费 /map + /scan，发 /amcl_pose 和 map→odom
+  → mission_runner 发 NavigateToPose goal
+  → bt_navigator 编排（planner_server 规划 / controller_server 控制 / behavior_server recovery）
+  → /cmd_vel → Gazebo 执行
+```
 
-### 7.1 任务发送过早
+三个自定义插件在这条链路上的位置：
 
-问题：
+- **StraightLine**（planner_server）：替代 Navfn 生成 global path
+- **MarkerLayer**（global_costmap）：在 costmap 上加 cost，影响 planner 规划
+- **ObserveSpin**（behavior_server）：导航失败时被 BT 的 RecoveryActions 调用
 
-- `mission_runner` 早于 Nav2 完全激活就发送目标
-- `NavigateToPose` 会直接 reject
+---
 
-修复：
+## 🛠 已知问题与修复
 
-- 等待 `/amcl_pose`
-- 再额外等待一段激活稳定时间
+| 问题 | 修复 |
+| --- | --- |
+| mission 过早发目标 → `NavigateToPose` reject | 等 `/amcl_pose` + 额外激活延时 |
+| `/initialpose` 发太早、订阅端没就绪 | 等订阅端就绪 + 短时间内重复发布 |
+| 自定义 RViz 配置太薄、交互不稳 | 默认切到官方 `nav2_default_view.rviz` |
+| 残留 `gzserver` 进程导致新仿真启动失败 (`gzserver exit 255`) | 启动前 `pkill -f gzserver` 清掉孤儿进程 |
 
-### 7.2 初始位姿竞争条件
+---
 
-问题：
+## 🗺 Roadmap
 
-- `/initialpose` 可能发得太早
-- AMCL 还没完成订阅发现，导致初始位姿丢失
+**当前限制**
 
-修复：
+- 参数实验矩阵尚未建立
+- 三个插件已跑通链路，但缺系统的参数 / 场景对比实验
+- 没有动态障碍实验
 
-- 先等待 `/initialpose` 订阅端就绪
-- 在短时间内重复发布初始位姿
+**后续可做**
 
-### 7.3 RViz 过于简化
+- 参数调优资产（`inflation_radius` / `controller_frequency` / `max_vel_x` / `xy_goal_tolerance` 等多套版本对比）
+- 补结构差异明显的场景（窄走廊、多房间），各自配齐 world / map / mission
+- 动态障碍实验
+- 三个插件上的系统对比实验（StraightLine vs Navfn 跨场景成功率、MarkerLayer 不同位置的规划影响、ObserveSpin 在真正卡住场景的救场效果）
 
-问题：
+---
 
-- 自定义 RViz 配置太薄
-- 手动调试时地图和目标交互不稳定
+## 📄 License
 
-修复：
-
-- 默认切到 Nav2 官方 `nav2_default_view.rviz`
-
-## 8. 当前限制
-
-虽然这一版已经能跑通，但它还是一个刻意保持简单的基线版本。
-
-当前限制包括：
-
-- 目前有两套地图：`simple_room`和 `real`
-- 任务统计还比较基础
-- 还没有参数实验矩阵
-- 还没有自定义 planner / controller / BT 插件
-- 还没有动态障碍物实验
-
-## 9. 后续开发方向
-
-### 9.1 先稳住基线
-
-- 把 `simple_room` 作为标准参考场景
-- 固化预期 RViz 现象和 CSV 输出样例
-
-### 9.2 加实验变体
-
-- 在 `real` 世界之外，再补一两种结构差异明显的场景（如窄走廊、多房间），各自配齐 world / map / mission
-- 为每个场景写专用 mission YAML
-- 对比不同参数下的成功率、路径质量、耗时
-
-### 9.3 加参数调优资产
-
-先建立多套参数版本，重点观察：
-
-- `inflation_radius`
-- `controller_frequency`
-- `max_vel_x`
-- `xy_goal_tolerance`
-- local/global costmap 尺寸
-
-### 9.4 加诊断与统计
-
-- 统计 recovery 触发次数
-- 汇总任务总耗时
-- 汇总重试次数
-- 更明确记录失败原因
-
-### 9.5 再进入真正的扩展开发
-
-当这条基线足够稳定后，最值得做的工程化进阶方向是：
-
-- 自定义 BT XML
-- 自定义 recovery behavior
-- 自定义 costmap layer
-- 简单自定义 planner plugin
-
-## 10. 实用总结
-
-现在的 `nav2_lab` 已经不只是一个“能启动 Nav2 的包”。
-
-它已经是一个可工作的微型导航实验平台，具备：
-
-- 明确拆分的包结构
-- 可重复的启动入口
-- 自动任务执行
-- 结果记录
-- 已验证的三目标自主导航基线
-
-它的价值不在“功能很多”，而在“结构清楚、链路跑通、便于继续扩展”。
-
-如果下一阶段你要继续往上走，最合适的路线不是继续堆 launch，而是围绕下面三件事展开：
-
-1. 做标准化实验场景
-2. 做参数对比与结果统计
-3. 做一个真正属于你自己的 Nav2 扩展模块
+Apache-2.0。详见 [LICENSE](LICENSE)。

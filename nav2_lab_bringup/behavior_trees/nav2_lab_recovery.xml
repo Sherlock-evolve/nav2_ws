@@ -1,0 +1,44 @@
+<!--
+  nav2_lab_recovery: like the default navigate_to_pose_w_replanning_and_recovery
+  tree, but the FIRST recovery action is ObserveSpin -- a redirected <Spin> whose
+  server_name points at the custom observe_spin action -- BEFORE any costmap
+  clearing. The in-place spin sweeps unmapped obstacles into the local costmap
+  (the laser viewpoint changes as the robot turns), so Navfn's next replan can
+  route around them instead of clearing the costmap first and replanning back
+  into the same unmapped wall.
+
+  Differences vs the default tree are confined to the RoundRobin "RecoveryActions":
+    - ObserveSpin (<Spin server_name="observe_spin">) is placed FIRST.
+    - The stock <Spin spin_dist="1.57"/> is removed (ObserveSpin supersedes it).
+  Everything else is identical.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Spin server_name="observe_spin" spin_dist="1.57" time_allowance="10.0" is_recovery="true"/>
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Wait wait_duration="5"/>
+          <BackUp backup_dist="0.30" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

@@ -1,0 +1,7 @@
+<class_libraries>
+  <library path="nav2_lab_observe_spin_behavior">
+    <class name="nav2_lab_behaviors/ObserveSpin" type="nav2_lab_behaviors::ObserveSpin" base_class_type="nav2_core::Behavior">
+      <description>Recovery behavior: probes left/right candidate poses via the local-costmap collision checker, then spins in place toward the more-open side to sweep unmapped obstacles into the local costmap so a replan can route around them.</description>
+    </class>
+  </library>
+</class_libraries>

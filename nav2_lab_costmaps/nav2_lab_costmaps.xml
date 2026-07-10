@@ -1,0 +1,7 @@
+<class_libraries>
+  <library path="nav2_lab_marker_layer">
+    <class name="nav2_lab_costmaps/MarkerLayer" type="nav2_lab_costmaps::MarkerLayer" base_class_type="nav2_costmap_2d::Layer">
+      <description>Fixed-point cost decay layer: writes linearly decaying cost around a parameterized (x,y) point into the master costmap so planners route around the region. Pedagogical layer to exercise the nav2_costmap_2d::Layer plugin plumbing.</description>
+    </class>
+  </library>
+</class_libraries>

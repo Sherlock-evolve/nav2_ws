@@ -1,0 +1,7 @@
+<class_libraries>
+  <library path="nav2_lab_straight_line_planner">
+    <class name="nav2_lab_planners/StraightLinePlanner" type="nav2_lab_planners::StraightLinePlanner" base_class_type="nav2_core::GlobalPlanner">
+      <description>Straight-line global planner: connects start to goal with a Bresenham line, collision-checks each cell against the costmap, returns the line as a path or an empty path on collision.</description>
+    </class>
+  </library>
+</class_libraries>
