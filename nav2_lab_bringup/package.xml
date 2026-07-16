@@ -17,7 +17,7 @@
   <exec_depend>nav2_lab_behaviors</exec_depend>
   <exec_depend>nav2_lab_planners</exec_depend>
   <exec_depend>nav2_lab_costmaps</exec_depend>
-  <exec_depend>nav2_lab_missions</exec_depend>
+  <exec_depend>nav2_lab_explorer</exec_depend>
   <exec_depend>nav2_lab_worlds</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
@@ -25,6 +25,8 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>turtlebot3_gazebo</exec_depend>
+
+  <test_depend>ament_cmake_pytest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

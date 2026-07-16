@@ -246,7 +246,9 @@ global_costmap:
       robot_radius: 0.22
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "voxel_layer", "lab_marker_layer", "inflation_layer"]
+      # Official-only default. lab_marker_layer is inserted by launch when
+      # enable_marker_layer:=true.
+      plugins: ["static_layer", "obstacle_layer", "voxel_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -286,7 +288,7 @@ global_costmap:
           obstacle_min_range: 0.0
       lab_marker_layer:
         plugin: "nav2_lab_costmaps/MarkerLayer"
-        enabled: true
+        enabled: false
         point_x: 0.0
         point_y: 0.0
         radius: 0.5
@@ -314,7 +316,9 @@ planner_server:
   ros__parameters:
     expected_planner_frequency: 20.0
     use_sim_time: true
-    planner_plugins: ["GridBased", "LabStraightLine"]
+    # Official-only default. LabStraightLine is appended by launch when
+    # enable_straight_line_planner:=true.
+    planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.5
@@ -341,7 +345,9 @@ behavior_server:
     costmap_topic: local_costmap/costmap_raw
     footprint_topic: local_costmap/published_footprint
     cycle_frequency: 10.0
-    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait", "observe_spin"]
+    # Official-only default. observe_spin is appended by launch when
+    # enable_observe_spin:=true.
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
     spin:
       plugin: "nav2_behaviors/Spin"
     backup:

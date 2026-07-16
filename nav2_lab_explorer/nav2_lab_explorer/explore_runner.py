@@ -7,8 +7,8 @@ repeats until no frontiers remain (the map is fully explored) or a time budget
 is hit. This replaces the manual ``teleop_keyboard`` step during SLAM mapping,
 which is especially tedious for large worlds like ``real.world``.
 
-The node mirrors ``mission_runner.py``: it is self-driving (no top-level spin),
-uses ``ActionClient(self, NavigateToPose, ...)`` and resolves each goal with
+The node is self-driving (no top-level spin), uses
+``ActionClient(self, NavigateToPose, ...)`` and resolves each goal with
 ``spin_until_future_complete`` / ``spin_once``.
 """
 
@@ -327,7 +327,7 @@ class ExploreRunner(Node):
                 self.get_logger().debug(f'TF {self._map_frame}->{frame} failed: {ex}')
         return None
 
-    # ----- goal execution (mirrors mission_runner._run_goal) -----
+    # ----- goal execution -----
 
     def _send_goal(self, x, y, yaw):
         pose = PoseStamped()
@@ -394,7 +394,9 @@ class ExploreRunner(Node):
             if directory:
                 os.makedirs(directory, exist_ok=True)
             return path
-        output_dir = os.environ.get('NAV2_LAB_RESULTS_DIR', '/tmp/nav2_lab_results')
+        output_dir = os.environ.get(
+            'NAV2_LAB_EXPLORER_LOG_DIR', '/tmp/nav2_lab_explorer'
+        )
         os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         return os.path.join(output_dir, f'{timestamp}_explore.csv')

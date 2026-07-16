@@ -58,21 +58,93 @@ def _resolve_behavior_tree(value, package_share):
     return installed_tree
 
 
-def _params_file_with_bt_override(params_file, bt_xml, package_share):
-    expanded_params_file = os.path.expanduser(params_file)
-    if not bt_xml:
-        return expanded_params_file
+def _as_bool(value, argument_name):
+    normalized = str(value).strip().lower()
+    if normalized in ('1', 'true', 'yes', 'on'):
+        return True
+    if normalized in ('0', 'false', 'no', 'off'):
+        return False
+    raise ValueError(f'{argument_name} must be true or false, got: {value}')
 
-    bt_xml_file = _resolve_behavior_tree(bt_xml, package_share)
-    if not os.path.exists(bt_xml_file):
-        raise FileNotFoundError(f'BT XML file not found: {bt_xml_file}')
+
+def _append_unique(values, item):
+    if item not in values:
+        values.append(item)
+
+
+def _insert_before(values, item, before):
+    if item in values:
+        return
+    if before in values:
+        values.insert(values.index(before), item)
+    else:
+        values.append(item)
+
+
+def _params_file_with_plugin_selection(
+    params_file,
+    bt_xml,
+    package_share,
+    enable_straight_line_planner=False,
+    enable_observe_spin=False,
+    enable_marker_layer=False,
+):
+    expanded_params_file = os.path.expanduser(params_file)
+    selected_bt = bt_xml
+
+    # Preserve the old bt_xml shortcuts: selecting one of the bundled custom
+    # trees also loads the plugin(s) referenced by that tree.
+    bt_name = os.path.splitext(os.path.basename(bt_xml))[0] if bt_xml else ''
+    if bt_name in ('nav2_lab_straight_line', 'nav2_lab_all_plugins'):
+        enable_straight_line_planner = True
+    if bt_name in ('nav2_lab_recovery', 'nav2_lab_all_plugins'):
+        enable_observe_spin = True
+
+    # When only plugin switches are supplied, choose the matching bundled BT.
+    if not selected_bt:
+        if enable_straight_line_planner and enable_observe_spin:
+            selected_bt = 'nav2_lab_all_plugins'
+        elif enable_straight_line_planner:
+            selected_bt = 'nav2_lab_straight_line'
+        elif enable_observe_spin:
+            selected_bt = 'nav2_lab_recovery'
+
+    if not any((selected_bt, enable_marker_layer)):
+        return expanded_params_file
 
     with open(expanded_params_file, 'r', encoding='utf-8') as stream:
         params = yaml.safe_load(stream) or {}
 
-    bt_params = params.setdefault('bt_navigator', {}).setdefault('ros__parameters', {})
-    bt_params.pop('default_bt_xml_filename', None)
-    bt_params['default_nav_to_pose_bt_xml'] = bt_xml_file
+    if enable_straight_line_planner:
+        planner_params = params.setdefault('planner_server', {}).setdefault(
+            'ros__parameters', {}
+        )
+        planner_plugins = planner_params.setdefault('planner_plugins', [])
+        _append_unique(planner_plugins, 'LabStraightLine')
+
+    if enable_observe_spin:
+        behavior_params = params.setdefault('behavior_server', {}).setdefault(
+            'ros__parameters', {}
+        )
+        behavior_plugins = behavior_params.setdefault('behavior_plugins', [])
+        _append_unique(behavior_plugins, 'observe_spin')
+
+    if enable_marker_layer:
+        global_costmap_params = params.setdefault('global_costmap', {}).setdefault(
+            'global_costmap', {}
+        ).setdefault('ros__parameters', {})
+        costmap_plugins = global_costmap_params.setdefault('plugins', [])
+        _insert_before(costmap_plugins, 'lab_marker_layer', 'inflation_layer')
+        marker_params = global_costmap_params.setdefault('lab_marker_layer', {})
+        marker_params['enabled'] = True
+
+    if selected_bt:
+        bt_xml_file = _resolve_behavior_tree(selected_bt, package_share)
+        if not os.path.exists(bt_xml_file):
+            raise FileNotFoundError(f'BT XML file not found: {bt_xml_file}')
+        bt_params = params.setdefault('bt_navigator', {}).setdefault('ros__parameters', {})
+        bt_params.pop('default_bt_xml_filename', None)
+        bt_params['default_nav_to_pose_bt_xml'] = bt_xml_file
 
     temp_file = tempfile.NamedTemporaryFile(
         mode='w',
@@ -91,10 +163,22 @@ def launch_setup(context, *args, **kwargs):
     nav2_bringup_launch_dir = os.path.join(get_package_share_directory('nav2_bringup'), 'launch')
 
     map_file = _resolve_map(LaunchConfiguration('map').perform(context), pkg_share)
-    params_file = _params_file_with_bt_override(
+    params_file = _params_file_with_plugin_selection(
         LaunchConfiguration('params_file').perform(context),
         LaunchConfiguration('bt_xml').perform(context),
         pkg_share,
+        enable_straight_line_planner=_as_bool(
+            LaunchConfiguration('enable_straight_line_planner').perform(context),
+            'enable_straight_line_planner',
+        ),
+        enable_observe_spin=_as_bool(
+            LaunchConfiguration('enable_observe_spin').perform(context),
+            'enable_observe_spin',
+        ),
+        enable_marker_layer=_as_bool(
+            LaunchConfiguration('enable_marker_layer').perform(context),
+            'enable_marker_layer',
+        ),
     )
     rviz_config = LaunchConfiguration('rviz_config')
     slam = LaunchConfiguration('slam')
@@ -145,6 +229,29 @@ def generate_launch_description():
             description=(
                 'Optional NavigateToPose BT XML name under '
                 'nav2_lab_bringup/behavior_trees or absolute .xml path.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'enable_straight_line_planner',
+            default_value='false',
+            description=(
+                'Load LabStraightLine and select the bundled straight-line BT. '
+                'The official GridBased planner is used when false.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'enable_observe_spin',
+            default_value='false',
+            description=(
+                'Load ObserveSpin and select the bundled recovery BT. '
+                'Official Nav2 recovery behaviors are used when false.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'enable_marker_layer',
+            default_value='false',
+            description=(
+                'Insert and enable the custom MarkerLayer in the global costmap.'
             ),
         ),
         DeclareLaunchArgument(

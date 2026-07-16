@@ -1,7 +1,7 @@
 <!--
   nav2_lab_recovery: like the default navigate_to_pose_w_replanning_and_recovery
-  tree, but the FIRST recovery action is ObserveSpin -- a redirected <Spin> whose
-  server_name points at the custom observe_spin action -- BEFORE any costmap
+  tree, but the FIRST recovery action is ObserveSpin: a redirected <Spin> whose
+  server_name points at the custom observe_spin action BEFORE any costmap
   clearing. The in-place spin sweeps unmapped obstacles into the local costmap
   (the laser viewpoint changes as the robot turns), so Navfn's next replan can
   route around them instead of clearing the costmap first and replanning back

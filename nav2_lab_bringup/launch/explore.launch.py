@@ -84,7 +84,7 @@ def launch_setup(context, *args, **kwargs):
             period=12.0,
             actions=[
                 Node(
-                    package='nav2_lab_missions',
+                    package='nav2_lab_explorer',
                     executable='explore_runner',
                     name='explore_runner',
                     output='screen',
